@@ -3,9 +3,16 @@
 (function (root) {
   const THRESH = 6;
 
+  function zoomOf(state) {
+    if (root.Camera && typeof root.Camera.zoom === "function") return root.Camera.zoom();
+    return (state && state.camera && state.camera.zoom) || 1;
+  }
+
   function canvasPt(canvas, ev) {
+    if (root.Camera && typeof root.Camera.toWorld === "function") return root.Camera.toWorld(ev);
     const r = canvas.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    const z = zoomOf();
+    return { x: (ev.clientX - r.left) / z, y: (ev.clientY - r.top) / z };
   }
 
   function rectFrom(a, b) {
@@ -197,7 +204,8 @@
       if (session.kind === "marquee") {
         const now = canvasPt(canvas, ev);
         const box = rectFrom(session.origin, now);
-        if (!session.armed && Math.hypot(box.w, box.h) < THRESH) return;
+        const z = zoomOf(state);
+        if (!session.armed && Math.hypot(box.w, box.h) * z < THRESH) return;
         session.armed = true;
         state.dragged = true;
         showMarquee(box);
@@ -210,20 +218,22 @@
       session.armed = true;
       if (Math.hypot(dx, dy) >= THRESH) state.dragged = true;
       if (session.kind === "move") {
+        const z = zoomOf(state);
         for (const o of session.origins) {
           const card = state.cards.find((c) => c.id === o.id);
           if (!card) continue;
-          card.x = Math.max(8, o.left + dx);
-          card.y = Math.max(8, o.top + dy);
+          card.x = Math.max(8, o.left + dx / z);
+          card.y = Math.max(8, o.top + dy / z);
         }
         paintMoved(session.ids);
         return;
       }
       if (session.kind === "resize") {
+        const z = zoomOf(state);
         const card = state.cards.find((c) => c.id === session.id);
         if (!card) return;
-        card.w = Math.max(160, session.w + dx);
-        card.h = Math.max(100, session.h + dy);
+        card.w = Math.max(160, session.w + dx / z);
+        card.h = Math.max(100, session.h + dy / z);
         paintCard(card);
       }
     }
