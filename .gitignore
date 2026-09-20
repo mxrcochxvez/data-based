@@ -11,4 +11,6 @@ decisions.tsv
 *.c
 *.js
 !web/*.js
+!web/js/*.js
+web/data/
 !*.bend
