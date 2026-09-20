@@ -129,6 +129,38 @@
     return edges().length !== before;
   }
 
+  function unlinkIncident(id) {
+    if (!host || !host.state || id == null) return 0;
+    const sid = String(id);
+    const before = edges().length;
+    host.state.edges = edges().filter((e) => String(e.from) !== sid && String(e.to) !== sid);
+    if (selEdge && (String(selEdge.from) === sid || String(selEdge.to) === sid)) selEdge = null;
+    writeLinks(cards(), host.state.edges);
+    flushToBoard();
+    drawWires();
+    if (host.persist) host.persist();
+    return before - edges().length;
+  }
+
+  function selectEdge(edge) {
+    selEdge = edge ? { from: edge.from, to: edge.to } : null;
+    drawWires();
+    return selEdge;
+  }
+
+  function selectedEdge() {
+    return selEdge;
+  }
+
+  function cardLinkCount(id) {
+    const sid = String(id);
+    return edges().filter((e) => String(e.from) === sid || String(e.to) === sid).length;
+  }
+
+  function edgeAt(i) {
+    return edges()[Number(i)] || null;
+  }
+
   function pinEmpty(el) {
     if (!el) return;
     if (el.closest(".canvas") || el.closest("#canvas") || el.closest(".board")) {
@@ -225,14 +257,12 @@
       const mark = on ? "url(#flow-arrow-sel)" : "url(#flow-arrow)";
       parts.push(`<path class="wire-hit" data-edge="${i}" d="${d}"/>`);
       parts.push(`<path class="wire${on ? " is-sel" : ""}" data-edge="${i}" marker-end="${mark}" d="${d}"/>`);
-      if (on) {
-        const mx = (p.x1 + p.x2) / 2;
-        const my = (p.y1 + p.y2) / 2;
-        parts.push(`<g class="wire-kill" data-edge="${i}" transform="translate(${mx},${my})">`);
-        parts.push('<circle r="9" fill="#fff" stroke="#111"/>');
-        parts.push('<path d="M-3.5-3.5 3.5 3.5M3.5-3.5-3.5 3.5" stroke="#111" stroke-width="1.4"/>');
-        parts.push("</g>");
-      }
+      const mx = (p.x1 + p.x2) / 2;
+      const my = (p.y1 + p.y2) / 2;
+      parts.push(`<g class="wire-unlink${on ? " is-on" : ""}" data-edge="${i}" aria-label="Disconnect" transform="translate(${mx},${my})">`);
+      parts.push('<circle r="8" fill="#fff" stroke="#111" stroke-width="1.2"/>');
+      parts.push('<path d="M-3.2-1.2h2.6M.6 1.2h2.6M-4.2.8A2.6 2.6 0 0 1-1.2-2.2M4.2-.8A2.6 2.6 0 0 1 1.2 2.2" fill="none" stroke="#111" stroke-width="1.25" stroke-linecap="round"/>');
+      parts.push("</g>");
     });
     node.innerHTML = parts.join("");
   }
@@ -408,8 +438,19 @@
       .card .flow-port,
       .card .handle { z-index: 1; }
       .wires, .wires.flow-wires { z-index: 0; pointer-events: none; }
-      .wires.flow-wires .wire-hit { pointer-events: stroke; fill: none; stroke: transparent; stroke-width: 18; cursor: pointer; }
-      .wires.flow-wires .wire-kill { pointer-events: auto; cursor: pointer; }
+      .wires.flow-wires .wire-hit { pointer-events: stroke; fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+      .wires.flow-wires .wire-unlink {
+        pointer-events: auto;
+        opacity: 0;
+        cursor: pointer;
+      }
+      .wires.flow-wires .wire-hit:hover + .wire + .wire-unlink,
+      .wires.flow-wires .wire-unlink.is-on,
+      .wires.flow-wires .wire-unlink:hover {
+        opacity: 1;
+      }
+      .wires.flow-wires .wire-unlink:hover circle { fill: #111; }
+      .wires.flow-wires .wire-unlink:hover path { stroke: #fff; }
       .wire { fill: none; stroke: #111; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; }
       .wire.is-sel { stroke: #0d99ff; stroke-width: 2; }
       .wire.is-draft { stroke: #111; stroke-dasharray: 5 4; opacity: 0.7; pointer-events: none; }
@@ -522,7 +563,7 @@
         ev.stopPropagation();
         return;
       }
-      const kill = ev.target.closest(".wire-kill");
+      const kill = ev.target.closest(".wire-unlink");
       if (kill) {
         ev.preventDefault();
         ev.stopPropagation();
@@ -530,16 +571,25 @@
         if (edge) unlink(edge.from, edge.to);
         return;
       }
-      const hit = ev.target.closest("[data-edge]");
-      if (hit && (hit.classList.contains("wire-hit") || hit.classList.contains("wire"))) {
+      const hit = ev.target.closest(".wire-hit, .wire");
+      if (hit && hit.dataset.edge != null) {
         ev.preventDefault();
         ev.stopPropagation();
         const edge = edges()[Number(hit.dataset.edge)];
-        if (edge) unlink(edge.from, edge.to);
+        if (edge) {
+          if (host.setSelection) host.setSelection([]);
+          selectEdge(edge);
+        }
       }
     }, true);
 
     canvas.addEventListener("pointerdown", (ev) => {
+      if (!ev.target.closest("[data-edge]") && !ev.target.closest(".card")) {
+        if (selEdge) {
+          selEdge = null;
+          drawWires();
+        }
+      }
       const node = ev.target.closest(".card");
       if (node) bringToFront(cardById(node.dataset.id));
       const port = ev.target.closest(".flow-port");
@@ -621,6 +671,14 @@
       };
       api.renderCards._flowWrapped = true;
     }
+    if (typeof api.setSelection === "function" && !api.setSelection._flowWrapped) {
+      const origSel = api.setSelection;
+      api.setSelection = function wrappedSel(ids) {
+        if (ids && ids.length) selEdge = null;
+        return origSel.apply(this, arguments);
+      };
+      api.setSelection._flowWrapped = true;
+    }
     const origPaint = api.paintCard;
     if (origPaint && !origPaint._flowWrapped) {
       api.paintCard = function wrappedPaint(card) {
@@ -673,6 +731,11 @@
     attach,
     link,
     unlink,
+    unlinkIncident,
+    selectEdge,
+    selectedEdge,
+    cardLinkCount,
+    edgeAt,
     flushToBoard,
     hydrateFromBoard,
     decorate,
