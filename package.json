@@ -1,0 +1,17 @@
+{
+  "name": "data-based",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node web/sync-server.mjs",
+    "mcp": "node web/mcp-server.mjs",
+    "prepare:vercel": "node scripts/prepare-vercel-static.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.35.1",
+    "@vercel/blob": "^1.1.1"
+  }
+}

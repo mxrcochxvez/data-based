@@ -88,16 +88,6 @@ function originFrom(req) {
   return proto + "://" + host;
 }
 
-async function requireMcpUser(req, url, res) {
-  const key = extractPresentedKey(req, url);
-  const user = await userForKey(DATA_DIR, key);
-  if (!user) {
-    send(res, 401, { error: "unauthorized" });
-    return null;
-  }
-  return user;
-}
-
 async function handleKeyApi(req, res, url) {
   const handle = stubHandle(req);
   if (aclEnforced() && !handle) {
