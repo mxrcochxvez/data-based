@@ -52,7 +52,8 @@ const KIND = {
   gql: { label: "GraphQL", title: "User" },
 };
 
-const EFFECT_KINDS = ["db.read", "db.write", "http", "log", "queue", "throw"];
+const ACTION_KINDS = ["db.read", "db.write", "http", "log", "queue", "throw", "assign", "call"];
+const GATE_WORDS = new Set(["if", "else", "match", "when"]);
 
 const VENDORS = {
   schema: {
@@ -84,6 +85,13 @@ const VENDORS = {
     types: ["string", "number", "boolean", "Date", "unknown"],
     defaults: [""],
     fns: ["", "?"],
+  },
+  effects: {
+    lang: "effects",
+    kinds: ACTION_KINDS,
+    types: ACTION_KINDS,
+    defaults: [""],
+    fns: [""],
   },
 };
 
@@ -204,6 +212,22 @@ function currentBoard() {
 }
 
 function normalizeCard(c) {
+  if (window.Persist && typeof window.Persist.layoutCard === "function") {
+    window.Persist.layoutCard(c);
+  } else {
+    const x = Number(c.x != null ? c.x : c.left);
+    const y = Number(c.y != null ? c.y : c.top);
+    const w = Number(c.w != null ? c.w : c.width);
+    const h = Number(c.h != null ? c.h : c.height);
+    c.x = Number.isFinite(x) ? x : 88;
+    c.y = Number.isFinite(y) ? y : 200;
+    c.w = Number.isFinite(w) ? w : (c.kind === "note" ? 200 : c.kind === "logic" ? 280 : 248);
+    c.h = Number.isFinite(h) ? h : (c.kind === "note" ? 160 : 164);
+    c.left = c.x;
+    c.top = c.y;
+    c.width = c.w;
+    c.height = c.h;
+  }
   c.next = c.next || null;
   c.prev = c.prev || null;
   c.links = Array.isArray(c.links) ? c.links : (c.next != null ? [c.next] : []);
@@ -211,6 +235,10 @@ function normalizeCard(c) {
     c.body.fields = hydrateFields(c.kind, c.body.fields);
   }
   if (c.kind === "note" && c.body && c.body.note == null) c.body.note = "";
+  if (c.kind === "logic" && c.body) {
+    c.body.effects = normalizeFxList(c.body.effects);
+    if (c.body.effectsSrc == null) c.body.effectsSrc = effectsText(c.body.effects);
+  }
   return c;
 }
 
@@ -232,6 +260,9 @@ function hydrateBoard(b) {
 function flushBoard() {
   const b = currentBoard();
   if (!b) return;
+  if (window.Persist && typeof window.Persist.layoutCard === "function") {
+    state.cards.forEach((c) => window.Persist.layoutCard(c));
+  }
   b.cards = state.cards;
   b.nextId = state.nextId;
   b.placeAt = state.placeAt;
@@ -244,7 +275,10 @@ function flushBoard() {
 function persistDoc() {
   flushBoard();
   store.updatedAt = Date.now();
-  return { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
+  const doc = { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
+  return window.Persist && typeof window.Persist.snapshotDoc === "function"
+    ? window.Persist.snapshotDoc(doc)
+    : doc;
 }
 
 function persist() {
@@ -491,20 +525,117 @@ function parseTypeExpr(text) {
   return { ok: true, title: (src.match(/type\s+([A-Za-z_][A-Za-z0-9_]*)/) || [])[1], fields };
 }
 
-function effectsText(rows) {
-  return rows.map((r) => `${r.kind || "log"} ${r.target || ""}`.trim()).join("\n");
+function normalizeFxNode(n) {
+  if (!n || typeof n !== "object") return { type: "action", kind: "log", target: "" };
+  if (n.type === "if") {
+    return {
+      type: "if",
+      cond: n.cond || "",
+      then: normalizeFxList(n.then),
+      else: normalizeFxList(n.else),
+    };
+  }
+  if (n.type === "match") {
+    const arms = Array.isArray(n.arms) && n.arms.length ? n.arms : [{ when: "", body: [] }];
+    return {
+      type: "match",
+      field: n.field || "",
+      arms: arms.map((a) => ({ when: (a && a.when) || "", body: normalizeFxList(a && a.body) })),
+    };
+  }
+  return { type: "action", kind: n.kind || "log", target: n.target || "" };
+}
+
+function normalizeFxList(list) {
+  return Array.isArray(list) ? list.map(normalizeFxNode) : [];
+}
+
+function effectsText(nodes, depth) {
+  const pad = "  ".repeat(depth || 0);
+  return normalizeFxList(nodes).map((n) => {
+    if (n.type === "if") {
+      let out = `${pad}if ${n.cond}`.trimEnd();
+      if (n.then.length) out += "\n" + effectsText(n.then, (depth || 0) + 1);
+      if (n.else.length) {
+        out += `\n${pad}else`;
+        out += "\n" + effectsText(n.else, (depth || 0) + 1);
+      }
+      return out;
+    }
+    if (n.type === "match") {
+      let out = `${pad}match ${n.field}`.trimEnd();
+      for (const arm of n.arms) {
+        out += `\n${pad}  when ${arm.when}`.trimEnd();
+        if (arm.body.length) out += "\n" + effectsText(arm.body, (depth || 0) + 2);
+      }
+      return out;
+    }
+    return `${pad}${n.kind} ${n.target || ""}`.trimEnd();
+  }).join("\n");
+}
+
+function parseFxLines(text) {
+  const lines = [];
+  for (const raw of String(text || "").split("\n")) {
+    const cut = raw.replace(/\t/g, "  ");
+    if (!cut.trim() || cut.trim().startsWith("#")) continue;
+    const pad = cut.match(/^ */)[0].length;
+    lines.push({ level: Math.round(pad / 2), text: cut.trim() });
+  }
+  const parsed = parseFxSeq(lines, 0, 0);
+  if (!parsed.ok) return parsed;
+  if (parsed.i !== lines.length) return { ok: false, error: "Unexpected indent." };
+  return { ok: true, rows: parsed.nodes };
+}
+
+function parseFxSeq(lines, i, level) {
+  const nodes = [];
+  while (i < lines.length) {
+    const ln = lines[i];
+    if (ln.level < level) break;
+    if (ln.level > level) return { ok: false, error: "Unexpected indent." };
+    if (ln.text === "else" || ln.text.startsWith("when ")) break;
+    if (ln.text.startsWith("if ")) {
+      const thenR = parseFxSeq(lines, i + 1, level + 1);
+      if (!thenR.ok) return thenR;
+      i = thenR.i;
+      let els = [];
+      if (i < lines.length && lines[i].level === level && lines[i].text === "else") {
+        const elseR = parseFxSeq(lines, i + 1, level + 1);
+        if (!elseR.ok) return elseR;
+        els = elseR.nodes;
+        i = elseR.i;
+      }
+      nodes.push({ type: "if", cond: ln.text.slice(3).trim(), then: thenR.nodes, else: els });
+      continue;
+    }
+    if (ln.text.startsWith("match ")) {
+      i += 1;
+      const arms = [];
+      while (i < lines.length && lines[i].level === level + 1 && lines[i].text.startsWith("when ")) {
+        const when = lines[i].text.slice(5).trim();
+        const bodyR = parseFxSeq(lines, i + 1, level + 2);
+        if (!bodyR.ok) return bodyR;
+        arms.push({ when, body: bodyR.nodes });
+        i = bodyR.i;
+      }
+      if (!arms.length) return { ok: false, error: "match needs a when arm." };
+      nodes.push({ type: "match", field: ln.text.slice(6).trim(), arms });
+      continue;
+    }
+    const bits = ln.text.split(/\s+/);
+    const kind = bits[0];
+    if (GATE_WORDS.has(kind) || !/^[A-Za-z][A-Za-z0-9_.]*$/.test(kind)) {
+      return { ok: false, error: `Unknown action “${kind}”.` };
+    }
+    nodes.push({ type: "action", kind, target: bits.slice(1).join(" ") });
+    i += 1;
+  }
+  return { ok: true, nodes, i };
 }
 
 function parseEffects(text) {
-  const rows = [];
-  for (const line of String(text || "").split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const bits = t.split(/\s+/);
-    if (!EFFECT_KINDS.includes(bits[0])) return { ok: false, error: `Unknown effect “${bits[0]}”. Use ${EFFECT_KINDS.join(", ")}.` };
-    rows.push({ kind: bits[0], target: bits.slice(1).join(" ") });
-  }
-  return { ok: true, rows };
+  return parseFxLines(text);
 }
 
 function defaultFields(kind) {
@@ -542,7 +673,17 @@ function blank(kind) {
   if (kind === "logic") {
     const input = [{ name: "userId", type: "string", def: "", fns: "" }, { name: "email", type: "string", def: "", fns: "" }];
     const output = [{ name: "ok", type: "boolean", def: "", fns: "" }];
-    const effects = [{ kind: "db.write", target: "users" }, { kind: "http", target: "POST /invite" }];
+    const effects = [
+      {
+        type: "if",
+        cond: "email",
+        then: [
+          { type: "action", kind: "db.write", target: "users" },
+          { type: "action", kind: "http", target: "POST /invite" },
+        ],
+        else: [{ type: "action", kind: "throw", target: "missing email" }],
+      },
+    ];
     return {
       title: meta.title,
       input,
@@ -564,7 +705,7 @@ function preview(card) {
     return `<ul>${card.body.fields.map((f) => `<li>${esc(f.name)} <code>${esc(f.type)}</code></li>`).join("")}</ul>`;
   }
   if (card.kind === "logic") {
-    return `<ul>${card.body.effects.map((e) => `<li><code>${esc(e.kind)}</code> ${esc(e.target || "")}</li>`).join("")}</ul>`;
+    return `<ul>${previewFx(card.body.effects).map((line) => `<li><code>${esc(line)}</code></li>`).join("")}</ul>`;
   }
   return `<p>${esc(card.body.note)}</p>`;
 }
@@ -575,8 +716,34 @@ function esc(s) {
   }[c]));
 }
 
+function previewFx(nodes) {
+  const out = [];
+  function walk(list) {
+    for (const n of normalizeFxList(list)) {
+      if (n.type === "if") {
+        out.push(`if ${n.cond}`);
+        walk(n.then);
+        if (n.else.length) {
+          out.push("else");
+          walk(n.else);
+        }
+      } else if (n.type === "match") {
+        out.push(`match ${n.field}`);
+        for (const arm of n.arms) {
+          out.push(`when ${arm.when}`);
+          walk(arm.body);
+        }
+      } else {
+        out.push(`${n.kind} ${n.target || ""}`.trim());
+      }
+    }
+  }
+  walk(nodes);
+  return out.slice(0, 8);
+}
+
 function comboCell(name, value, list) {
-  const labels = { types: "Type", defaults: "Default", fns: "Functions" };
+  const labels = { types: "Type", defaults: "Default", fns: "Functions", kinds: "Action" };
   return `
     <div class="combo">
       <input type="text" name="${name}" value="${esc(value || "")}" data-combo="${list}" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="combo-pop" aria-haspopup="listbox" aria-label="${labels[list] || name}">
@@ -924,23 +1091,139 @@ function readFields(box) {
   }));
 }
 
-function effectRow(row) {
-  const opts = EFFECT_KINDS.map((k) => `<option value="${k}" ${k === row.kind ? "selected" : ""}>${k}</option>`).join("");
+function fxTools() {
   return `
-    <div class="row effect">
-      <select name="ekind">${opts}</select>
-      <input type="text" name="etarget" value="${esc(row.target || "")}" placeholder="table, url, or message">
-      <button type="button" class="move up" aria-label="Move up">↑</button>
-      <button type="button" class="move down" aria-label="Move down">↓</button>
-      <button type="button" class="icon-x drop-fx" aria-label="Remove effect">×</button>
+    <div class="fx-tools">
+      <button type="button" class="btn ghost add-fx-action" aria-label="Add action">+</button>
+      <button type="button" class="text-btn add-fx-gate" data-gate="if">If</button>
+      <button type="button" class="text-btn add-fx-gate" data-gate="match">Match</button>
     </div>
   `;
 }
 
+function fxAction(row) {
+  return `
+    <div class="fx-node row effect" data-kind="action">
+      ${comboCell("ekind", row.kind || "log", "kinds")}
+      <input type="text" name="etarget" value="${esc(row.target || "")}" placeholder="table, url, name, or message" aria-label="Action target">
+      <button type="button" class="move up" aria-label="Move up">↑</button>
+      <button type="button" class="move down" aria-label="Move down">↓</button>
+      <button type="button" class="icon-x drop-fx" aria-label="Remove action">×</button>
+    </div>
+  `;
+}
+
+function fxArm(arm) {
+  return `
+    <div class="fx-branch" data-arm="when">
+      <div class="fx-arm">
+        <span>When</span>
+        <input type="text" name="fwhen" value="${esc(arm.when || "")}" placeholder="value" aria-label="Match value">
+        <button type="button" class="icon-x drop-fx-arm" aria-label="Remove arm">×</button>
+      </div>
+      <div class="fx-kids">${normalizeFxList(arm.body).map(fxNode).join("")}</div>
+      ${fxTools()}
+    </div>
+  `;
+}
+
+function fxIf(node) {
+  return `
+    <div class="fx-node fx-gate" data-kind="if">
+      <div class="row effect fx-head">
+        <span class="fx-kw">If</span>
+        <input type="text" name="fcond" value="${esc(node.cond || "")}" placeholder="email && invited" aria-label="If condition">
+        <button type="button" class="move up" aria-label="Move up">↑</button>
+        <button type="button" class="move down" aria-label="Move down">↓</button>
+        <button type="button" class="icon-x drop-fx" aria-label="Remove gate">×</button>
+      </div>
+      <div class="fx-branch" data-arm="then">
+        <div class="fx-arm">Then</div>
+        <div class="fx-kids">${normalizeFxList(node.then).map(fxNode).join("")}</div>
+        ${fxTools()}
+      </div>
+      <div class="fx-branch" data-arm="else">
+        <div class="fx-arm">Else</div>
+        <div class="fx-kids">${normalizeFxList(node.else).map(fxNode).join("")}</div>
+        ${fxTools()}
+      </div>
+    </div>
+  `;
+}
+
+function fxMatch(node) {
+  const arms = node.arms && node.arms.length ? node.arms : [{ when: "", body: [] }];
+  return `
+    <div class="fx-node fx-gate" data-kind="match">
+      <div class="row effect fx-head">
+        <span class="fx-kw">Match</span>
+        <input type="text" name="ffield" value="${esc(node.field || "")}" placeholder="field" aria-label="Match field">
+        <button type="button" class="move up" aria-label="Move up">↑</button>
+        <button type="button" class="move down" aria-label="Move down">↓</button>
+        <button type="button" class="icon-x drop-fx" aria-label="Remove gate">×</button>
+      </div>
+      ${arms.map(fxArm).join("")}
+      <button type="button" class="text-btn add-fx-arm">+ arm</button>
+    </div>
+  `;
+}
+
+function fxNode(node) {
+  const n = normalizeFxNode(node);
+  if (n.type === "if") return fxIf(n);
+  if (n.type === "match") return fxMatch(n);
+  return fxAction(n);
+}
+
+function fxTree(nodes) {
+  return `
+    <div class="fx-root" data-vendor="effects">
+      <div class="fx-kids" id="fx-tree">${normalizeFxList(nodes).map(fxNode).join("")}</div>
+      ${fxTools()}
+    </div>
+  `;
+}
+
+function readFxKids(el) {
+  if (!el) return [];
+  return [...el.children].filter((n) => n.classList.contains("fx-node")).map(readFxNode);
+}
+
+function readFxNode(node) {
+  const kind = node.dataset.kind;
+  if (kind === "if") {
+    return {
+      type: "if",
+      cond: node.querySelector(':scope > .fx-head [name="fcond"]')?.value || "",
+      then: readFxKids(node.querySelector(':scope > [data-arm="then"] > .fx-kids')),
+      else: readFxKids(node.querySelector(':scope > [data-arm="else"] > .fx-kids')),
+    };
+  }
+  if (kind === "match") {
+    return {
+      type: "match",
+      field: node.querySelector(':scope > .fx-head [name="ffield"]')?.value || "",
+      arms: [...node.querySelectorAll(':scope > [data-arm="when"]')].map((arm) => ({
+        when: arm.querySelector('[name="fwhen"]')?.value || "",
+        body: readFxKids(arm.querySelector(":scope > .fx-kids")),
+      })),
+    };
+  }
+  return {
+    type: "action",
+    kind: node.querySelector('[name="ekind"]')?.value || "log",
+    target: node.querySelector('[name="etarget"]')?.value || "",
+  };
+}
+
 function readEffects(box) {
-  const kinds = [...box.querySelectorAll('[name="ekind"]')];
-  const targets = [...box.querySelectorAll('[name="etarget"]')];
-  return kinds.map((k, i) => ({ kind: k.value, target: targets[i] ? targets[i].value : "" }));
+  return readFxKids((box && box.querySelector("#fx-tree")) || $("fx-tree"));
+}
+
+function fxKidsFor(btn) {
+  const branch = btn.closest(".fx-branch");
+  if (branch) return branch.querySelector(":scope > .fx-kids");
+  return $("fx-tree");
 }
 
 function setErr(msg) {
@@ -994,11 +1277,8 @@ function openEdit(card) {
       <section class="block" data-slot="effects">
         <h3>Effects in the box</h3>
         <div class="split">
-          <div>
-            <div id="fx-list">${card.body.effects.map(effectRow).join("")}</div>
-            <button type="button" class="btn ghost" id="add-fx">Add effect</button>
-          </div>
-          <label class="field"><span>Effects list</span>${codeBox("effectsSrc", "effects", card.body.effectsSrc)}</label>
+          <div>${fxTree(card.body.effects)}</div>
+          <label class="field"><span>Effects source</span>${codeBox("effectsSrc", "effects", card.body.effectsSrc || effectsText(card.body.effects))}</label>
         </div>
       </section>
     `;
@@ -1084,9 +1364,9 @@ function syncEffectsFromSource() {
     return;
   }
   setErr("");
-  const list = $("fx-list");
-  if (document.activeElement && list.contains(document.activeElement)) return;
-  list.innerHTML = parsed.rows.map(effectRow).join("");
+  const list = $("fx-tree");
+  if (!list || (document.activeElement && list.closest(".fx-root")?.contains(document.activeElement))) return;
+  list.innerHTML = normalizeFxList(parsed.rows).map(fxNode).join("");
 }
 
 function saveEdit() {
@@ -1114,7 +1394,11 @@ function saveEdit() {
     const pfx = parseEffects(card.body.effectsSrc);
     card.body.input = pin.ok ? pin.fields : readFields(inputBox);
     card.body.output = pout.ok ? pout.fields : readFields(outputBox);
-    card.body.effects = pfx.ok ? pfx.rows : readEffects(fxBox);
+    if (pfx.ok) card.body.effects = pfx.rows;
+    else {
+      card.body.effects = readEffects(fxBox);
+      card.body.effectsSrc = effectsText(card.body.effects);
+    }
   } else if (card.kind !== "note") {
     const note = editBody.querySelector('[name="note"]');
     if (note) card.body.note = note.value || "";
@@ -1139,16 +1423,30 @@ function comboOpts(input) {
   return pack[input.dataset.combo] || [];
 }
 
+function viewBox() {
+  const vv = window.visualViewport;
+  if (!vv) return { left: 0, top: 0, width: innerWidth, height: innerHeight };
+  return { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height };
+}
+
 function placeComboPop(combo) {
   if (!comboPop || !combo) return;
   const r = combo.getBoundingClientRect();
-  comboPop.style.width = r.width + "px";
+  const view = viewBox();
+  const pad = 8;
+  const width = Math.min(r.width, Math.max(120, view.width - pad * 2));
+  comboPop.style.width = width + "px";
   comboPop.hidden = false;
-  const h = Math.min(180, comboPop.offsetHeight || 180);
+  const roomBelow = view.top + view.height - r.bottom - pad;
+  const roomAbove = r.top - view.top - pad;
+  const maxH = Math.max(72, Math.min(180, Math.max(roomBelow, roomAbove)));
+  comboPop.style.maxHeight = maxH + "px";
+  const h = Math.min(maxH, comboPop.offsetHeight || maxH);
   let top = r.bottom - 1;
+  if (top + h > view.top + view.height - pad) top = Math.max(view.top + pad, r.top - h + 1);
   let left = r.left;
-  if (top + h > innerHeight - 8) top = Math.max(8, r.top - h + 1);
-  if (left + r.width > innerWidth - 8) left = Math.max(8, innerWidth - r.width - 8);
+  if (left + width > view.left + view.width - pad) left = view.left + view.width - width - pad;
+  if (left < view.left + pad) left = view.left + pad;
   comboPop.style.top = top + "px";
   comboPop.style.left = left + "px";
 }
@@ -1299,12 +1597,12 @@ if (typeof window.attachCamera === "function") {
     persist,
     world: $("world"),
     label: $("zoom-pct"),
-    blocked: () => editDlg.open || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
+    blocked: () => editDlg.open || document.body.classList.contains("is-modal") || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
   });
 }
 
 if (typeof window.attachSelect === "function") {
-  window.attachSelect({
+  window.DataBasedSelect = window.attachSelect({
     canvas,
     scroller,
     state,
@@ -1313,7 +1611,7 @@ if (typeof window.attachSelect === "function") {
     paintCard,
     setSelection,
     marquee: $("marquee"),
-    blocked: () => editDlg.open || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
+    blocked: () => editDlg.open || document.body.classList.contains("is-modal") || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
   });
 }
 
@@ -1401,9 +1699,36 @@ editBody.addEventListener("click", (ev) => {
     const slot = ev.target.closest(".block").dataset.slot;
     syncTypeSlot(slot, slot === "input" ? "Input" : "Output");
   }
-  if (ev.target.id === "add-fx") {
-    $("fx-list").insertAdjacentHTML("beforeend", effectRow({ kind: "log", target: "" }));
+  if (ev.target.classList.contains("add-fx-action")) {
+    const y = editBody.scrollTop;
+    fxKidsFor(ev.target).insertAdjacentHTML("beforeend", fxAction({ type: "action", kind: "log", target: "" }));
+    editBody.scrollTop = y;
     syncEffectsFromRows();
+    return;
+  }
+  if (ev.target.classList.contains("add-fx-gate")) {
+    const y = editBody.scrollTop;
+    const gate = ev.target.dataset.gate === "match"
+      ? fxMatch({ type: "match", field: "", arms: [{ when: "", body: [] }] })
+      : fxIf({ type: "if", cond: "", then: [], else: [] });
+    fxKidsFor(ev.target).insertAdjacentHTML("beforeend", gate);
+    editBody.scrollTop = y;
+    syncEffectsFromRows();
+    return;
+  }
+  if (ev.target.classList.contains("add-fx-arm")) {
+    const y = editBody.scrollTop;
+    ev.target.insertAdjacentHTML("beforebegin", fxArm({ when: "", body: [] }));
+    editBody.scrollTop = y;
+    syncEffectsFromRows();
+    return;
+  }
+  if (ev.target.classList.contains("drop-fx-arm")) {
+    const gate = ev.target.closest(".fx-gate");
+    const arms = gate ? gate.querySelectorAll(':scope > [data-arm="when"]') : [];
+    if (arms.length > 1) ev.target.closest(".fx-branch").remove();
+    syncEffectsFromRows();
+    return;
   }
   if (ev.target.classList.contains("drop-field")) {
     ev.target.closest("tr").remove();
@@ -1414,17 +1739,19 @@ editBody.addEventListener("click", (ev) => {
     }
   }
   if (ev.target.classList.contains("drop-fx")) {
-    ev.target.closest(".row").remove();
+    ev.target.closest(".fx-node")?.remove();
     syncEffectsFromRows();
+    return;
   }
   if (ev.target.classList.contains("up") || ev.target.classList.contains("down")) {
-    const row = ev.target.closest(".row");
+    const row = ev.target.closest(".fx-node") || ev.target.closest(".row");
     const sibling = ev.target.classList.contains("up") ? row.previousElementSibling : row.nextElementSibling;
-    if (sibling) {
+    if (sibling && sibling.classList.contains("fx-node")) {
       if (ev.target.classList.contains("up")) row.parentNode.insertBefore(row, sibling);
       else row.parentNode.insertBefore(sibling, row);
       syncEffectsFromRows();
     }
+    return;
   }
 });
 
@@ -1447,7 +1774,7 @@ editBody.addEventListener("input", (ev) => {
   }
   if (t.name === "inputSrc") syncTypeFromSource("input");
   if (t.name === "outputSrc") syncTypeFromSource("output");
-  if (t.name === "ekind" || t.name === "etarget") syncEffectsFromRows();
+  if (t.name === "ekind" || t.name === "etarget" || t.name === "fcond" || t.name === "ffield" || t.name === "fwhen") syncEffectsFromRows();
   if (t.name === "effectsSrc") syncEffectsFromSource();
 });
 
@@ -1485,6 +1812,15 @@ editBody.addEventListener("scroll", () => {
     else placeComboPop(comboOpen);
   }
 }, { passive: true });
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    if (comboOpen) placeComboPop(comboOpen);
+  });
+  window.visualViewport.addEventListener("scroll", () => {
+    if (comboOpen) placeComboPop(comboOpen);
+  });
+}
 
 if (comboPop) {
   comboPop.addEventListener("mousedown", (ev) => ev.preventDefault());
@@ -1569,6 +1905,7 @@ function route() {
   showView("canvas");
 }
 
+if (!window.Boards) {
 $("board-list").addEventListener("click", (ev) => {
   const open = ev.target.closest("[data-open]");
   if (!open) return;
@@ -1631,6 +1968,7 @@ $("grant-list").addEventListener("click", (ev) => {
 });
 
 window.addEventListener("hashchange", route);
+}
 
 window.addEventListener("keydown", (ev) => {
   const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement || ev.target instanceof HTMLSelectElement;
@@ -1643,6 +1981,8 @@ window.addEventListener("keydown", (ev) => {
     if (editDlg.open) {
       state.editing = null;
       editDlg.close();
+    } else if ($("export") && $("export").open) {
+      $("export").close();
     } else if (veil && !veil.hidden) {
       closeMarket();
     }
@@ -1650,6 +1990,10 @@ window.addEventListener("keydown", (ev) => {
   }
   if (editDlg.open) {
     trapTab(ev, editDlg);
+    return;
+  }
+  if ($("export") && $("export").open) {
+    trapTab(ev, $("export"));
     return;
   }
   if (document.body.classList.contains("is-market")) {
@@ -1680,7 +2024,7 @@ function bindTips() {
 
   function placeTip(ev, el) {
     const label = el.getAttribute("aria-label");
-    if (!label || document.body.classList.contains("is-market") || editDlg.open) {
+    if (!label || document.body.classList.contains("is-market") || document.body.classList.contains("is-modal") || editDlg.open) {
       tip.hidden = true;
       return;
     }
@@ -1722,9 +2066,13 @@ function bindTips() {
 
 bindTips();
 renderCatalog();
-renderBoardChrome();
-renderCards();
-route();
+if (!window.Boards) {
+  renderBoardChrome();
+  renderCards();
+  route();
+} else {
+  renderCards();
+}
 
 if (window.DataBasedFlow && window.DB) window.DataBasedFlow.attach(window.DB);
 if (window.Boards && window.DB && typeof window.Boards.boot === "function") window.Boards.boot(window.DB);
