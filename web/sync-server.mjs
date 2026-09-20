@@ -14,6 +14,8 @@ import {
   isSystemHandle,
   readAccess,
   systemEmail,
+  systemEnvHint,
+  ensureSystemClerkUser,
 } from "./mcp/access.mjs";
 import { clerkClientConfig, clerkConfigured } from "./mcp/clerk.mjs";
 
@@ -182,10 +184,15 @@ const server = http.createServer((req, res) => {
       send(res, 405, { error: "method not allowed" });
       return;
     }
-    send(res, 200, {
-      ...clerkClientConfig(),
-      contactEmail: contactEmail(),
-      systemEnv: Boolean(systemEmail()),
+    ensureSystemClerkUser().then(() => {
+      send(res, 200, {
+        ...clerkClientConfig(),
+        contactEmail: contactEmail(),
+        systemEnv: Boolean(systemEmail()),
+        systemHint: systemEnvHint(),
+      });
+    }).catch((e) => {
+      send(res, 500, { error: e && e.message ? e.message : "config failed" });
     });
     return;
   }

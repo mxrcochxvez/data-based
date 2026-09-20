@@ -6,6 +6,12 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function pushEmail(out, value) {
+  const e = normalizeEmail(value);
+  if (!e || !e.includes("@") || e.startsWith("@") || e.endsWith("@")) return;
+  if (!out.includes(e)) out.push(e);
+}
+
 export function clerkPublishableKey() {
   return String(
     process.env.CLERK_PUBLISHABLE_KEY ||
@@ -24,11 +30,33 @@ export function clerkConfigured() {
   return Boolean(clerkSecretKey());
 }
 
+export function clerkKeyKind() {
+  const pk = clerkPublishableKey();
+  if (pk.startsWith("pk_live_")) return "live";
+  if (pk.startsWith("pk_test_")) return "test";
+  return "";
+}
+
+export function clerkFrontendHost() {
+  const pk = clerkPublishableKey();
+  try {
+    const encoded = pk.replace(/^pk_(test|live)_/, "");
+    const pad = "=".repeat((4 - (encoded.length % 4)) % 4);
+    const host = Buffer.from(encoded + pad, "base64").toString("utf8").replace(/\$$/, "").trim();
+    if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
+  } catch (_) {}
+  return "";
+}
+
 export function clerkClientConfig() {
+  const kind = clerkKeyKind();
   return {
     clerk: Boolean(clerkPublishableKey()),
     publishableKey: clerkPublishableKey() || null,
     google: true,
+    clerkInstance: clerkFrontendHost() || null,
+    clerkKeyKind: kind || null,
+    clerkEnvLabel: kind === "live" ? "Production" : (kind === "test" ? "Development" : null),
   };
 }
 
@@ -38,47 +66,90 @@ function bearerToken(req) {
   return m ? m[1] : "";
 }
 
-function emailFromClaims(payload) {
-  if (!payload || typeof payload !== "object") return "";
-  return normalizeEmail(
-    payload.email ||
-    payload.email_address ||
-    payload.primary_email ||
-    payload.primary_email_address ||
-    (payload.user && (payload.user.email || payload.user.primary_email_address))
-  );
+export function emailsFromClaims(payload) {
+  const out = [];
+  if (!payload || typeof payload !== "object") return out;
+  pushEmail(out, payload.email);
+  pushEmail(out, payload.email_address);
+  pushEmail(out, payload.primary_email);
+  pushEmail(out, payload.primary_email_address);
+  if (typeof payload.username === "string" && payload.username.includes("@")) {
+    pushEmail(out, payload.username);
+  }
+  const user = payload.user;
+  if (user && typeof user === "object") {
+    pushEmail(out, user.email);
+    pushEmail(out, user.primary_email_address);
+    const primary = user.primaryEmailAddress;
+    if (typeof primary === "string") pushEmail(out, primary);
+    else if (primary) pushEmail(out, primary.emailAddress || primary.email_address);
+  }
+  const lists = [payload.email_addresses, payload.emails, payload.emailAddresses];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (typeof item === "string") pushEmail(out, item);
+      else if (item && typeof item === "object") {
+        pushEmail(out, item.email);
+        pushEmail(out, item.email_address);
+        pushEmail(out, item.emailAddress);
+      }
+    }
+  }
+  return out;
 }
 
-async function emailForUserId(userId) {
+export function emailsFromClerkUser(user) {
+  const out = [];
+  if (!user || typeof user !== "object") return out;
+  const primary = user.primaryEmailAddress || user.primary_email_address;
+  if (typeof primary === "string") pushEmail(out, primary);
+  else if (primary) pushEmail(out, primary.emailAddress || primary.email_address);
+  const list = user.emailAddresses || user.email_addresses || [];
+  for (const item of list) {
+    if (typeof item === "string") pushEmail(out, item);
+    else if (item) pushEmail(out, item.emailAddress || item.email_address || item.email);
+  }
+  return out;
+}
+
+async function emailsForUserId(userId) {
   const id = String(userId || "");
-  if (!id) return "";
+  if (!id) return [];
   const hit = emailCache.get(id);
-  if (hit && hit.exp > Date.now()) return hit.email;
+  if (hit && hit.exp > Date.now()) return hit.emails;
   const { createClerkClient } = await import("@clerk/backend");
   const client = createClerkClient({ secretKey: clerkSecretKey() });
   const user = await client.users.getUser(id);
-  const email = normalizeEmail(
-    (user.primaryEmailAddress && user.primaryEmailAddress.emailAddress) ||
-    (user.emailAddresses && user.emailAddresses[0] && user.emailAddresses[0].emailAddress) ||
-    ""
-  );
-  emailCache.set(id, { email, exp: Date.now() + 60 * 1000 });
-  return email;
+  const emails = emailsFromClerkUser(user);
+  emailCache.set(id, { emails, exp: Date.now() + 60 * 1000 });
+  return emails;
 }
 
-export async function emailFromClerkRequest(req) {
-  if (!clerkConfigured()) return "";
+export async function clerkIdentityFromRequest(req) {
+  if (!clerkConfigured()) return { email: "", emails: [], userId: "", error: "clerk_unconfigured" };
   const token = bearerToken(req);
-  if (!token || token.startsWith("dbk_")) return "";
+  if (!token || token.startsWith("dbk_")) return { email: "", emails: [], userId: "", error: "no_token" };
   try {
     const { verifyToken } = await import("@clerk/backend");
     const payload = await verifyToken(token, { secretKey: clerkSecretKey() });
-    const fromClaims = emailFromClaims(payload);
-    if (fromClaims) return fromClaims;
-    return emailForUserId(payload && payload.sub);
+    const userId = payload && payload.sub ? String(payload.sub) : "";
+    let emails = emailsFromClaims(payload);
+    if (!emails.length && userId) emails = await emailsForUserId(userId);
+    return {
+      email: emails[0] || "",
+      emails,
+      userId,
+      error: emails.length ? "" : (userId ? "no_email" : "verify_failed"),
+    };
   } catch (_) {
-    return "";
+    return { email: "", emails: [], userId: "", error: "verify_failed" };
   }
+}
+
+export async function emailFromClerkRequest(req) {
+  const ident = await clerkIdentityFromRequest(req);
+  return ident.email || "";
 }
 
 export async function inviteClerkEmail(email) {

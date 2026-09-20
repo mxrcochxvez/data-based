@@ -1,5 +1,5 @@
 import { clerkClientConfig } from "../web/mcp/clerk.mjs";
-import { contactEmail, systemEmail } from "../web/mcp/access.mjs";
+import { contactEmail, ensureSystemClerkUser, systemEmail, systemEnvHint } from "../web/mcp/access.mjs";
 
 export const config = { maxDuration: 10 };
 
@@ -15,6 +15,7 @@ export default async function handler(req, res) {
     res.end(JSON.stringify({ error: "method not allowed" }));
     return;
   }
+  await ensureSystemClerkUser();
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
@@ -22,5 +23,6 @@ export default async function handler(req, res) {
     ...clerkClientConfig(),
     contactEmail: contactEmail(),
     systemEnv: Boolean(systemEmail()),
+    systemHint: systemEnvHint(),
   }));
 }
