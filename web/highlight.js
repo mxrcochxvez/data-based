@@ -18,7 +18,7 @@
       type: "ID String Int Float Boolean",
     },
     effects: {
-      keyword: "type db.read db.write http log queue throw",
+      keyword: "if else match when type db.read db.write http log queue throw assign call",
       type: "string number boolean Date unknown",
     },
   };
