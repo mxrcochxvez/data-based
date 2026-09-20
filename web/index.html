@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>data-based</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="css/brand.css">
 </head>
 <body>
   <!--
@@ -24,12 +25,23 @@
 
   <aside class="hud-empty" id="empty">
     <h1>Place a table on the board.</h1>
-    <p>Start with a table. The + on a card adds the next layer: repository, then effects, then a controller. Notes stay put. Marketplace is optional.</p>
+    <p>Start with a table. The + adds a next-layer card. Drag a port onto another card to share a module — many tables can feed one repo. Notes stay put.</p>
     <button type="button" class="btn" id="empty-open">Open marketplace</button>
   </aside>
 
   <header class="island brand" id="chrome-brand">
-    <a class="wordmark" href="#/">data-based</a>
+    <a class="wordmark" href="#/" aria-label="Data Based">
+      <svg class="wordmark-mark" viewBox="0 0 14 14" aria-hidden="true">
+        <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
+        <path class="grid" d="M7 0.5v13M0.5 7h13"/>
+        <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
+        <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
+      </svg>
+      <span class="wordmark-type">
+        <span class="wordmark-data">DATA</span>
+        <span class="wordmark-based">BASED</span>
+      </span>
+    </a>
     <span class="rule" aria-hidden="true"></span>
     <a href="#/boards" id="board-name">Board</a>
     <a class="ghost-link" href="#/boards">Boards</a>
@@ -37,26 +49,26 @@
   </header>
 
   <nav class="island rail tools" id="chrome-tools" aria-label="Tools">
-    <button type="button" class="tool" id="house" aria-label="Marketplace" title="Marketplace · H">
+    <button type="button" class="tool" id="house" aria-label="Marketplace" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3l9 8.2V21h-7v-6H10v6H3V11.2Z"/></svg>
     </button>
-    <button type="button" class="tool is-on" id="select" aria-label="Select" title="Select · V">
+    <button type="button" class="tool is-on" id="select" aria-label="Select">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8.2-6.2 1.6L16 21l-3.2-1.2L9.6 13 5 3Z"/></svg>
     </button>
-    <button type="button" class="tool" id="pan" aria-label="Pan" title="Pan · Space">
+    <button type="button" class="tool" id="pan" aria-label="Pan">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11h1V5.5a1.5 1.5 0 0 1 3 0V11h1V7.5a1.5 1.5 0 0 1 3 0V14c0 4-2.2 7-7 7-3.6 0-6-2.2-6-5.5V12h2v-.2Z"/></svg>
     </button>
-    <button type="button" class="tool" id="note-tool" aria-label="Note" title="Note">
+    <button type="button" class="tool" id="note-tool" aria-label="Note">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h8l2 2v10H3V2Zm8 0v2h2"/></svg>
     </button>
     <span class="rule" aria-hidden="true"></span>
-    <button type="button" class="tool" data-nav="db" aria-label="Databases" title="Databases">
+    <button type="button" class="tool" data-nav="db" aria-label="Databases">
       <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg>
     </button>
-    <button type="button" class="tool" data-nav="logic" aria-label="Effects" title="Effects">
+    <button type="button" class="tool" data-nav="logic" aria-label="Effects">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h8v3H9v7H7V6H4V3Z"/></svg>
     </button>
-    <button type="button" class="tool" data-nav="api" aria-label="APIs" title="APIs">
+    <button type="button" class="tool" data-nav="api" aria-label="APIs">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h4v2H3V5Zm6 0h4v2H9V5ZM3 9h10v2H3V9Z"/></svg>
     </button>
   </nav>
@@ -90,15 +102,17 @@
   </section>
 
   <div class="veil hidden" id="veil" hidden>
-    <aside class="market" id="market" role="dialog" aria-labelledby="market-title">
+    <aside class="market" id="market" role="dialog" aria-modal="true" aria-labelledby="market-title" aria-describedby="market-lead">
       <header class="market-head">
         <h2 id="market-title">Marketplace</h2>
         <button type="button" class="text-btn" id="market-close">Close</button>
       </header>
-      <p class="market-lead">Click an element to put it on the board.</p>
+      <p class="market-lead" id="market-lead">Named elements for the board. Click one to place it.</p>
       <div class="market-body" id="market-body"></div>
     </aside>
   </div>
+
+  <div class="tip" id="tip" role="tooltip" hidden></div>
 
   <dialog class="modal" id="edit">
     <form method="dialog" class="modal-form" id="edit-form">
@@ -115,10 +129,15 @@
         <button type="submit" class="btn">Save</button>
       </footer>
     </form>
-    <ul class="combo-pop" id="combo-pop" hidden></ul>
+    <ul class="combo-pop" id="combo-pop" role="listbox" hidden></ul>
   </dialog>
 
+  <script src="js/persist.js"></script>
+  <script src="js/boards.js"></script>
   <script src="highlight.js"></script>
+  <script src="js/select.js"></script>
+  <script src="js/flow.js"></script>
   <script src="app.js"></script>
+  <script src="js/sync.js"></script>
 </body>
 </html>

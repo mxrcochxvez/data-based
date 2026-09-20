@@ -91,11 +91,16 @@ const PIPE_NEXT = { schema: "repo", drizzle: "repo", prisma: "repo", repo: "logi
 const PIPE_LABEL = { repo: "Add repository", logic: "Add effects", ctrl: "Add controller" };
 const PIPE_SUFFIX = { repo: "Repo", logic: "Effect", ctrl: "Controller" };
 
+function flow() {
+  return window.DataBasedFlow || null;
+}
+
 const $ = (id) => document.getElementById(id);
 const canvas = $("canvas");
 const scroller = $("scroller");
 const empty = $("empty");
 const veil = $("veil");
+const market = $("market");
 const marketBody = $("market-body");
 const editDlg = $("edit");
 const editBody = $("edit-body");
@@ -107,7 +112,8 @@ const wires = $("wires");
 const state = {
   tool: "select",
   cards: [],
-  sel: null,
+  edges: [],
+  sel: new Set(),
   nextId: 1,
   drag: null,
   pan: null,
@@ -116,7 +122,7 @@ const state = {
   editing: null,
 };
 
-const KEY = "data-based.v1";
+const KEY = (window.Persist && window.Persist.KEY) || "databased.v1";
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -127,6 +133,7 @@ function emptyBoard(name) {
     id: uid(),
     name: name || "Board",
     cards: [],
+    edges: [],
     nextId: 1,
     placeAt: { x: 88, y: 200 },
     grants: [{ id: "owner", handle: "you", role: "owner" }],
@@ -134,20 +141,28 @@ function emptyBoard(name) {
 }
 
 function loadStore() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "");
-    if (raw && Array.isArray(raw.boards) && raw.boards.length) {
-      raw.boards.forEach((b) => {
-        b.grants = b.grants && b.grants.length ? b.grants : [{ id: "owner", handle: "you", role: "owner" }];
-      });
-      return raw;
+  const fromPersist = window.Persist && typeof window.Persist.readSync === "function"
+    ? window.Persist.readSync()
+    : null;
+  const raw = fromPersist || (function () {
+    try {
+      return JSON.parse(localStorage.getItem("databased.v1") || localStorage.getItem(KEY) || "");
+    } catch (_) {
+      return null;
     }
-  } catch (_) {}
+  })();
+  if (raw && Array.isArray(raw.boards) && raw.boards.length) {
+    raw.boards.forEach((b) => {
+      b.grants = b.grants && b.grants.length ? b.grants : [{ id: "owner", handle: "you", role: "owner" }];
+    });
+    if (raw.updatedAt == null) raw.updatedAt = 0;
+    return raw;
+  }
   const b = emptyBoard("Board");
-  return { boards: [b], currentId: b.id };
+  return { boards: [b], currentId: b.id, updatedAt: Date.now() };
 }
 
-const store = loadStore();
+const store = (window.Boards && window.Boards.store) || loadStore();
 
 function currentBoard() {
   return store.boards.find((b) => b.id === store.currentId) || store.boards[0];
@@ -156,6 +171,7 @@ function currentBoard() {
 function normalizeCard(c) {
   c.next = c.next || null;
   c.prev = c.prev || null;
+  c.links = Array.isArray(c.links) ? c.links : (c.next != null ? [c.next] : []);
   if (isSchema(c.kind) && c.body && c.body.fields) {
     c.body.fields = hydrateFields(c.kind, c.body.fields);
   }
@@ -168,8 +184,10 @@ function hydrateBoard(b) {
   state.cards = (b.cards || []).map(normalizeCard);
   state.nextId = b.nextId || 1;
   state.placeAt = b.placeAt || { x: 88, y: 200 };
-  state.sel = null;
+  state.sel = new Set();
   state.editing = null;
+  if (flow() && typeof flow().hydrateFromBoard === "function") flow().hydrateFromBoard(b);
+  else state.edges = Array.isArray(b.edges) ? b.edges.slice() : [];
 }
 
 function flushBoard() {
@@ -178,11 +196,31 @@ function flushBoard() {
   b.cards = state.cards;
   b.nextId = state.nextId;
   b.placeAt = state.placeAt;
+  if (flow() && typeof flow().flushToBoard === "function") flow().flushToBoard(b);
+  else b.edges = Array.isArray(state.edges) ? state.edges : [];
+}
+
+function persistDoc() {
+  flushBoard();
+  store.updatedAt = Date.now();
+  return { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
 }
 
 function persist() {
-  flushBoard();
-  localStorage.setItem(KEY, JSON.stringify({ boards: store.boards, currentId: store.currentId }));
+  if (window.Persist && typeof window.Persist.schedule === "function") {
+    window.Persist.schedule(persistDoc);
+    return;
+  }
+  try {
+    localStorage.setItem("databased.v1", JSON.stringify(persistDoc()));
+  } catch (_) {}
+  try {
+    if (window.DataBasedSync && typeof window.DataBasedSync.kick === "function") {
+      window.DataBasedSync.kick();
+    }
+  } catch (_) {}
+  const hook = (window.DB && window.DB.persistHook) || window.persistBoard;
+  if (typeof hook === "function") hook();
 }
 
 hydrateBoard(currentBoard());
@@ -499,9 +537,8 @@ function esc(s) {
 function comboCell(name, value, list) {
   return `
     <div class="combo">
-      <input type="text" name="${name}" value="${esc(value || "")}" data-combo="${list}" autocomplete="off">
+      <input type="text" name="${name}" value="${esc(value || "")}" data-combo="${list}" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="combo-pop">
       <button type="button" class="combo-chev" tabindex="-1" aria-label="Options">▾</button>
-      <ul class="combo-list" hidden></ul>
     </div>
   `;
 }
@@ -520,7 +557,7 @@ function gridRow(f) {
 
 function fieldGrid(fields, vendor) {
   return `
-    <div class="grid" data-vendor="${vendor}">
+    <div class="sheet-table grid" data-vendor="${vendor}">
       <table>
         <thead>
           <tr><th>Name</th><th>Type</th><th>Default</th><th>Functions</th><th></th></tr>
@@ -534,7 +571,7 @@ function fieldGrid(fields, vendor) {
 
 function codeBox(name, lang, value) {
   return `
-    <div class="code" data-lang="${lang}">
+    <div class="code-pane code" data-lang="${lang}">
       <pre class="code-hi" aria-hidden="true"><code></code></pre>
       <textarea name="${name}" spellcheck="false">${esc(value || "")}</textarea>
     </div>
@@ -573,40 +610,60 @@ function setTa(ta, value) {
 
 function renderCatalog() {
   marketBody.innerHTML = CATALOG.map((sec) => `
-    <section class="section" id="sec-${sec.id}">
+    <section class="market-sec" id="sec-${sec.id}">
       <h3>${esc(sec.heading)}</h3>
-      ${sec.items.map((it) => `
-        <button type="button" class="offer" data-kind="${it.kind}">
-          <div class="offer-name">${esc(it.name)}</div>
-          <div class="offer-blurb">${esc(it.blurb)}</div>
-          <div class="offer-vendor">${esc(it.vendor)}</div>
-        </button>
-      `).join("")}
+      <ul class="market-list">
+        ${sec.items.map((it) => `
+          <li>
+            <button type="button" class="offer" data-kind="${it.kind}">
+              <span class="offer-name">${esc(it.name)}</span>
+              <span class="offer-blurb">${esc(it.blurb)}</span>
+              <span class="offer-vendor">${esc(it.vendor)}</span>
+            </button>
+          </li>
+        `).join("")}
+      </ul>
     </section>
   `).join("");
 }
 
+function hideTip() {
+  const tip = $("tip");
+  if (tip) tip.hidden = true;
+}
+
+function setMarketOpen(on) {
+  veil.hidden = !on;
+  veil.classList.toggle("hidden", !on);
+  const house = $("house");
+  if (house && house.hasAttribute("aria-expanded")) house.setAttribute("aria-expanded", on ? "true" : "false");
+  document.body.classList.toggle("is-market", on);
+  hideTip();
+}
+
 function openMarket(section) {
-  veil.hidden = false;
-  veil.classList.remove("hidden");
+  setMarketOpen(true);
   if (section && section !== "market" && section !== "canvas") {
     const node = document.getElementById(`sec-${section}`);
     if (node) node.scrollIntoView({ block: "start" });
   }
+  const first = marketBody.querySelector(".offer");
+  if (first) first.focus();
 }
 
 function closeMarket() {
-  veil.hidden = true;
-  veil.classList.add("hidden");
+  setMarketOpen(false);
 }
 
 function nextKindFor(kind) {
+  const f = flow();
+  if (f && f.nextKindFor) return f.nextKindFor(kind);
   return PIPE_NEXT[kind] || null;
 }
 
 function cardNode(card) {
   const el = document.createElement("article");
-  el.className = "card" + (state.sel === card.id ? " is-sel" : "") + (card.kind === "note" ? " note" : "");
+  el.className = "card" + (state.sel.has(card.id) ? " is-sel" : "") + (card.kind === "note" ? " note" : "");
   el.style.left = card.x + "px";
   el.style.top = card.y + "px";
   el.style.width = card.w + "px";
@@ -614,16 +671,21 @@ function cardNode(card) {
   el.dataset.id = String(card.id);
   el.tabIndex = 0;
   el.setAttribute("aria-label", `${KIND[card.kind].label} ${card.body.title}`);
-  const next = nextKindFor(card.kind);
-  const nextBtn = next && !card.next
-    ? `<button type="button" class="card-next" data-next="${card.id}" title="${PIPE_LABEL[next]}">+</button>`
-    : "";
+  const f = flow();
+  const nextBtn = f && f.nextControl
+    ? f.nextControl(card)
+    : (nextKindFor(card.kind)
+      ? `<button type="button" class="card-next" data-next="${card.id}" aria-label="${esc(PIPE_LABEL[nextKindFor(card.kind)])}">+</button>`
+      : "");
   if (card.kind === "note") {
-    el.innerHTML = `
-      <div class="card-bar"><span class="card-kind">Note</span></div>
-      <textarea class="note-text" data-note="${card.id}" placeholder="Write a note">${esc(card.body.note || "")}</textarea>
-      <span class="handle se" data-handle="se"></span>
-    `;
+    if (f && f.fillNote) f.fillNote(el, card);
+    else {
+      el.innerHTML = `
+        <div class="card-bar"><span class="card-kind">Note</span></div>
+        <textarea class="note-text" data-note="${card.id}" placeholder="Write a note">${esc(card.body.note || "")}</textarea>
+        <span class="handle se" data-handle="se"></span>
+      `;
+    }
   } else {
     el.innerHTML = `
       <div class="card-bar">
@@ -636,10 +698,16 @@ function cardNode(card) {
       <span class="handle se" data-handle="se"></span>
     `;
   }
+  if (f && f.decorate) f.decorate(el, card);
   return el;
 }
 
 function drawWires() {
+  const f = flow();
+  if (f && f.drawWires) {
+    f.drawWires(wires, state.cards);
+    return;
+  }
   if (!wires) return;
   const parts = ['<defs><marker id="arrow" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><path d="M0 0L10 3.5L0 7Z" fill="#111"/></marker></defs>'];
   for (const card of state.cards) {
@@ -657,6 +725,11 @@ function drawWires() {
 }
 
 function showEmpty() {
+  const f = flow();
+  if (f && f.syncEmpty) {
+    f.syncEmpty(empty, state.cards);
+    return;
+  }
   const on = state.cards.length === 0 && !document.body.classList.contains("is-page");
   empty.hidden = !on;
 }
@@ -666,7 +739,6 @@ function renderCards() {
   canvas.querySelectorAll(".card").forEach((n) => n.remove());
   for (const card of state.cards) canvas.appendChild(cardNode(card));
   drawWires();
-  persist();
 }
 
 function paintCard(card) {
@@ -676,12 +748,22 @@ function paintCard(card) {
   el.style.top = card.y + "px";
   el.style.width = card.w + "px";
   el.style.height = card.h + "px";
-  el.classList.toggle("is-sel", state.sel === card.id);
+  el.classList.toggle("is-sel", state.sel.has(card.id));
   drawWires();
 }
 
 function selected() {
-  return state.cards.find((c) => c.id === state.sel) || null;
+  return state.cards.find((c) => state.sel.has(c.id)) || null;
+}
+
+function selectedList() {
+  return state.cards.filter((c) => state.sel.has(c.id));
+}
+
+function paintSel() {
+  canvas.querySelectorAll(".card").forEach((n) => {
+    n.classList.toggle("is-sel", state.sel.has(Number(n.dataset.id)));
+  });
 }
 
 function place(kind, opts) {
@@ -706,33 +788,52 @@ function place(kind, opts) {
   }
   state.cards.push(card);
   if (o.prev) {
-    const parent = state.cards.find((c) => c.id === o.prev);
-    if (parent) parent.next = card.id;
+    if (flow() && typeof flow().link === "function") flow().link(o.prev, card.id, true);
+    else {
+      const parent = state.cards.find((c) => c.id === o.prev);
+      if (parent) {
+        parent.next = card.id;
+        parent.links = (parent.links || []).concat(card.id);
+      }
+    }
   }
-  state.sel = card.id;
+  state.sel = new Set([card.id]);
   closeMarket();
   renderCards();
+  persist();
   return card;
 }
 
 function addLayer(from) {
+  const f = flow();
+  if (f && f.addLayer) {
+    f.addLayer(from, { place, stemName, state });
+    return;
+  }
   const next = nextKindFor(from.kind);
   if (!next) return;
-  if (from.next && state.cards.some((c) => c.id === from.next)) return;
-  const title = stemName(from.body.title) + PIPE_SUFFIX[next];
-  place(next, { title, x: from.x + from.w + 72, y: from.y, prev: from.id });
+  const already = (state.edges || []).filter((e) => String(e.from) === String(from.id)).length;
+  place(next, {
+    title: stemName(from.body.title) + PIPE_SUFFIX[next],
+    x: from.x + from.w + 72,
+    y: from.y + already * 36,
+    prev: from.id,
+  });
 }
 
 function removeSel() {
-  if (state.sel == null) return;
-  const id = state.sel;
+  if (!state.sel.size) return;
+  const ids = state.sel;
   for (const c of state.cards) {
-    if (c.next === id) c.next = null;
-    if (c.prev === id) c.prev = null;
+    if (ids.has(c.next)) c.next = null;
+    if (ids.has(c.prev)) c.prev = null;
+    if (c.links) c.links = c.links.filter((id) => !ids.has(id));
   }
-  state.cards = state.cards.filter((c) => c.id !== id);
-  state.sel = null;
+  state.cards = state.cards.filter((c) => !ids.has(c.id));
+  state.edges = (state.edges || []).filter((e) => !ids.has(e.from) && !ids.has(e.to));
+  state.sel = new Set();
   renderCards();
+  persist();
 }
 
 function readFields(box) {
@@ -781,12 +882,16 @@ function setErr(msg) {
 
 function openEdit(card) {
   if (card.kind === "note") {
-    const ta = canvas.querySelector(`[data-note="${card.id}"]`);
-    if (ta) ta.focus();
+    const f = flow();
+    if (f && f.startNoteEdit) f.startNoteEdit(card);
+    else {
+      const ta = canvas.querySelector(`[data-note="${card.id}"]`);
+      if (ta) ta.focus();
+    }
     return;
   }
   state.editing = card.id;
-  state.sel = card.id;
+  state.sel = new Set([card.id]);
   editTitle.textContent = card.body.title;
   editKind.textContent = KIND[card.kind].label;
   setErr("");
@@ -835,6 +940,7 @@ function openEdit(card) {
       <label class="field"><span>Notes</span><textarea name="note">${esc(card.body.note)}</textarea></label>
     `;
   }
+  document.body.classList.add("is-modal");
   editDlg.showModal();
   bindCodeScroll(editBody);
 }
@@ -947,6 +1053,7 @@ function saveEdit() {
   }
   state.editing = null;
   renderCards();
+  persist();
 }
 
 function cardFromEvent(t) {
@@ -955,30 +1062,62 @@ function cardFromEvent(t) {
   return state.cards.find((c) => String(c.id) === node.dataset.id) || null;
 }
 
+const comboPop = $("combo-pop");
+let comboOpen = null;
+
 function comboOpts(input) {
   const vendor = input.closest("[data-vendor]")?.dataset.vendor || "schema";
   const pack = VENDORS[vendor] || VENDORS.schema;
   return pack[input.dataset.combo] || [];
 }
 
-function closeCombos(except) {
-  editBody.querySelectorAll(".combo-list").forEach((list) => {
-    if (except && except.contains(list)) return;
-    list.hidden = true;
-  });
+function placeComboPop(combo) {
+  if (!comboPop || !combo) return;
+  const r = combo.getBoundingClientRect();
+  comboPop.style.width = r.width + "px";
+  comboPop.hidden = false;
+  const h = Math.min(180, comboPop.offsetHeight || 180);
+  let top = r.bottom - 1;
+  let left = r.left;
+  if (top + h > innerHeight - 8) top = Math.max(8, r.top - h + 1);
+  if (left + r.width > innerWidth - 8) left = Math.max(8, innerWidth - r.width - 8);
+  comboPop.style.top = top + "px";
+  comboPop.style.left = left + "px";
+}
+
+function closeCombos() {
+  if (comboOpen) {
+    const input = comboOpen.querySelector("input");
+    if (input && input.hasAttribute("aria-expanded")) input.setAttribute("aria-expanded", "false");
+  }
+  comboOpen = null;
+  if (!comboPop) return;
+  comboPop.hidden = true;
+  comboPop.innerHTML = "";
 }
 
 function openCombo(combo, filter) {
+  if (!comboPop) return;
+  if (comboOpen && comboOpen !== combo) {
+    const prev = comboOpen.querySelector("input");
+    if (prev && prev.hasAttribute("aria-expanded")) prev.setAttribute("aria-expanded", "false");
+  }
+  comboOpen = combo;
   const input = combo.querySelector("input");
-  const list = combo.querySelector(".combo-list");
+  if (input) {
+    if (!input.hasAttribute("role")) input.setAttribute("role", "combobox");
+    if (!input.hasAttribute("aria-autocomplete")) input.setAttribute("aria-autocomplete", "list");
+    if (!input.hasAttribute("aria-controls")) input.setAttribute("aria-controls", "combo-pop");
+    input.setAttribute("aria-expanded", "true");
+  }
   const q = String(filter ?? input.value).toLowerCase();
   const opts = comboOpts(input);
   const shown = opts.filter((o) => !q || String(o).toLowerCase().includes(q));
-  list.innerHTML = shown.length
+  comboPop.innerHTML = shown.length
     ? shown.map((o) => `<li role="option" data-val="${esc(o)}">${esc(o || "(none)")}</li>`).join("")
     : `<li class="is-empty">Keep typing a custom value.</li>`;
-  list.hidden = false;
-  list.querySelector("li[data-val]")?.classList.add("is-on");
+  comboPop.querySelector("li[data-val]")?.classList.add("is-on");
+  placeComboPop(combo);
 }
 
 function pickCombo(combo, value) {
@@ -1021,75 +1160,60 @@ canvas.addEventListener("input", (ev) => {
   }
 });
 
-canvas.addEventListener("pointerdown", (ev) => {
-  if (ev.target.closest(".note-text")) {
-    const card = cardFromEvent(ev.target);
-    if (card) {
-      state.sel = card.id;
-      paintCard(card);
-    }
-    return;
-  }
-  if (ev.target.closest(".btn") || ev.target.closest("[data-edit]") || ev.target.closest("[data-next]")) return;
-  if (state.tool === "pan") {
-    state.pan = { x: ev.clientX, y: ev.clientY, sl: scroller.scrollLeft, st: scroller.scrollTop };
-    scroller.setPointerCapture(ev.pointerId);
-    return;
-  }
-  const handle = ev.target.closest(".handle");
-  const card = cardFromEvent(ev.target);
-  state.dragged = false;
-  if (handle && card) {
-    state.sel = card.id;
-    state.drag = { mode: "resize", id: card.id, x: ev.clientX, y: ev.clientY, w: card.w, h: card.h };
-    paintCard(card);
-    try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
-    return;
-  }
-  if (card) {
-    state.sel = card.id;
-    state.drag = { mode: "move", id: card.id, x: ev.clientX, y: ev.clientY, left: card.x, top: card.y, armed: false };
-    document.querySelectorAll(".card").forEach((n) => n.classList.toggle("is-sel", n.dataset.id === String(card.id)));
-    try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
-    return;
-  }
-  state.sel = null;
-  document.querySelectorAll(".card").forEach((n) => n.classList.remove("is-sel"));
-});
-
-canvas.addEventListener("pointermove", (ev) => {
-  if (state.pan) {
-    scroller.scrollLeft = state.pan.sl - (ev.clientX - state.pan.x);
-    scroller.scrollTop = state.pan.st - (ev.clientY - state.pan.y);
-    return;
-  }
-  if (!state.drag) return;
-  const dx = ev.clientX - state.drag.x;
-  const dy = ev.clientY - state.drag.y;
-  if (!state.drag.armed && state.drag.mode === "move" && Math.hypot(dx, dy) < 6) return;
-  state.drag.armed = true;
-  if (Math.hypot(dx, dy) >= 6) state.dragged = true;
-  const card = state.cards.find((c) => c.id === state.drag.id);
-  if (!card) return;
-  if (state.drag.mode === "move") {
-    card.x = Math.max(8, state.drag.left + dx);
-    card.y = Math.max(8, state.drag.top + dy);
-  } else {
-    card.w = Math.max(160, state.drag.w + dx);
-    card.h = Math.max(100, state.drag.h + dy);
-  }
-  paintCard(card);
-});
-
-function endDrag() {
-  if (state.drag) persist();
-  state.drag = null;
-  state.pan = null;
+function setSelection(ids) {
+  const set = new Set(ids || []);
+  state.sel = set;
+  state.sels = set;
+  paintSel();
 }
 
-canvas.addEventListener("pointerup", endDrag);
-canvas.addEventListener("pointercancel", endDrag);
-scroller.addEventListener("pointerup", endDrag);
+window.DB = {
+  $,
+  state,
+  store,
+  canvas,
+  scroller,
+  empty,
+  wires,
+  editDlg,
+  persist,
+  persistHook: null,
+  persistDoc,
+  flushBoard,
+  hydrateBoard,
+  currentBoard,
+  setSelection,
+  renderCards,
+  paintCard,
+  paintSel,
+  selected,
+  selectedList,
+  cardFromEvent,
+  openEdit,
+  openMarket,
+  closeMarket,
+  place,
+  removeSel,
+  renderBoardChrome,
+  showEmpty,
+  stemName,
+  esc,
+  normalizeCard,
+};
+
+if (typeof window.attachSelect === "function") {
+  window.attachSelect({
+    canvas,
+    scroller,
+    state,
+    persist,
+    cardFromEvent,
+    paintCard,
+    setSelection,
+    marquee: $("marquee"),
+    blocked: () => editDlg.open || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
+  });
+}
 
 canvas.addEventListener("dblclick", (ev) => {
   if (state.dragged) return;
@@ -1147,14 +1271,8 @@ $("edit-form").addEventListener("submit", (ev) => {
 editBody.addEventListener("click", (ev) => {
   if (ev.target.classList.contains("combo-chev")) {
     const combo = ev.target.closest(".combo");
-    const list = combo.querySelector(".combo-list");
-    if (list.hidden) openCombo(combo, "");
-    else closeCombos();
-    return;
-  }
-  const opt = ev.target.closest(".combo-list li[data-val]");
-  if (opt) {
-    pickCombo(opt.closest(".combo"), opt.dataset.val);
+    if (comboOpen === combo) closeCombos();
+    else openCombo(combo, "");
     return;
   }
   if (ev.target.dataset.addRow != null || ev.target.classList.contains("add-row") || ev.target.id === "add-field") {
@@ -1162,7 +1280,9 @@ editBody.addEventListener("click", (ev) => {
     const vendor = ev.target.closest("[data-vendor]") || ev.target.previousElementSibling;
     const pack = VENDORS[(vendor && vendor.dataset.vendor) || "schema"];
     const tbody = ev.target.closest(".split")?.querySelector("tbody") || editBody.querySelector("tbody");
+    const y = editBody.scrollTop;
     tbody.insertAdjacentHTML("beforeend", gridRow({ name: "", type: pack.types[0], def: "", fns: "" }));
+    editBody.scrollTop = y;
     if (editingCard() && isSchema(editingCard().kind)) syncSchemaFromFields();
     else {
       const slot = ev.target.closest(".block");
@@ -1227,19 +1347,18 @@ editBody.addEventListener("input", (ev) => {
 
 editBody.addEventListener("keydown", (ev) => {
   const combo = ev.target.closest(".combo");
-  if (!combo) return;
-  const list = combo.querySelector(".combo-list");
+  if (!combo || !comboPop) return;
   if (ev.key === "ArrowDown") {
     ev.preventDefault();
-    if (list.hidden) openCombo(combo, combo.querySelector("input").value);
-    else moveCombo(list, 1);
+    if (comboPop.hidden || comboOpen !== combo) openCombo(combo, combo.querySelector("input").value);
+    else moveCombo(comboPop, 1);
   }
   if (ev.key === "ArrowUp") {
     ev.preventDefault();
-    if (!list.hidden) moveCombo(list, -1);
+    if (!comboPop.hidden) moveCombo(comboPop, -1);
   }
-  if (ev.key === "Enter" && !list.hidden) {
-    const on = list.querySelector("li.is-on[data-val]");
+  if (ev.key === "Enter" && !comboPop.hidden && comboOpen === combo) {
+    const on = comboPop.querySelector("li.is-on[data-val]");
     if (on) {
       ev.preventDefault();
       pickCombo(combo, on.dataset.val);
@@ -1251,8 +1370,30 @@ editBody.addEventListener("keydown", (ev) => {
   }
 });
 
+editBody.addEventListener("scroll", () => {
+  if (comboOpen) {
+    const box = editBody.getBoundingClientRect();
+    const r = comboOpen.getBoundingClientRect();
+    if (r.bottom < box.top || r.top > box.bottom) closeCombos();
+    else placeComboPop(comboOpen);
+  }
+}, { passive: true });
+
+if (comboPop) {
+  comboPop.addEventListener("mousedown", (ev) => ev.preventDefault());
+  comboPop.addEventListener("click", (ev) => {
+    const opt = ev.target.closest("li[data-val]");
+    if (opt && comboOpen) pickCombo(comboOpen, opt.dataset.val);
+  });
+}
+
 document.addEventListener("click", (ev) => {
-  if (!ev.target.closest(".combo")) closeCombos();
+  if (!ev.target.closest(".combo") && !ev.target.closest(".combo-pop")) closeCombos();
+});
+
+editDlg.addEventListener("close", () => {
+  closeCombos();
+  document.body.classList.remove("is-modal");
 });
 
 function renderBoardChrome() {
@@ -1385,14 +1526,32 @@ window.addEventListener("keydown", (ev) => {
     } else closeMarket();
     return;
   }
+  if (document.body.classList.contains("is-market")) {
+    if (ev.key === "h" || ev.key === "H") {
+      ev.preventDefault();
+      closeMarket();
+      return;
+    }
+    if (ev.key === "Tab") {
+      const nodes = [...market.querySelectorAll("button, [href], input, textarea, select, [tabindex]:not([tabindex='-1'])")]
+        .filter((el) => !el.disabled && el.offsetParent);
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (ev.shiftKey && document.activeElement === first) {
+        ev.preventDefault();
+        last.focus();
+      } else if (!ev.shiftKey && document.activeElement === last) {
+        ev.preventDefault();
+        first.focus();
+      }
+    }
+    return;
+  }
   if (typing) return;
   if (ev.key === "h" || ev.key === "H") openMarket("market");
   if (ev.key === "v" || ev.key === "V") $("select").click();
   if (ev.key === "n" || ev.key === "N") place("note");
-  if (ev.key === " " && !editDlg.open) {
-    ev.preventDefault();
-    $("pan").click();
-  }
   if (ev.key === "e" || ev.key === "E") {
     const card = selected();
     if (card) openEdit(card);
@@ -1400,7 +1559,59 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Backspace" || ev.key === "Delete") removeSel();
 });
 
+function bindTips() {
+  const tip = $("tip");
+  if (!tip) return;
+  let timer = 0;
+  let over = null;
+
+  function placeTip(ev, el) {
+    const label = el.getAttribute("aria-label");
+    if (!label || document.body.classList.contains("is-market") || editDlg.open) {
+      tip.hidden = true;
+      return;
+    }
+    tip.textContent = label;
+    tip.hidden = false;
+    let x = ev && ev.clientX != null ? ev.clientX + 12 : el.getBoundingClientRect().right + 8;
+    let y = ev && ev.clientY != null ? ev.clientY + 14 : el.getBoundingClientRect().bottom + 8;
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    if (x + w > innerWidth - 8) x = innerWidth - w - 8;
+    if (y + h > innerHeight - 8) y = innerHeight - h - 8;
+    if (x < 8) x = 8;
+    if (y < 8) y = 8;
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+
+  document.addEventListener("pointerover", (ev) => {
+    const el = ev.target.closest(".tool, [data-tip]");
+    if (!el || el === over) return;
+    over = el;
+    clearTimeout(timer);
+    timer = setTimeout(() => placeTip(ev, el), 300);
+  });
+  document.addEventListener("pointermove", (ev) => {
+    if (!over || tip.hidden) return;
+    if (over.contains(ev.target) || ev.target === over) placeTip(ev, over);
+  });
+  document.addEventListener("pointerout", (ev) => {
+    const el = ev.target.closest(".tool, [data-tip]");
+    if (!el || el.contains(ev.relatedTarget)) return;
+    if (el === over) {
+      over = null;
+      clearTimeout(timer);
+      tip.hidden = true;
+    }
+  });
+}
+
+bindTips();
 renderCatalog();
 renderBoardChrome();
 renderCards();
 route();
+
+if (window.DataBasedFlow && window.DB) window.DataBasedFlow.attach(window.DB);
+if (window.Boards && window.DB && typeof window.Boards.boot === "function") window.Boards.boot(window.DB);
