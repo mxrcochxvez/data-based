@@ -119,19 +119,60 @@
       };
     }
 
-    function wheelFactor(ev) {
-      if (ev.ctrlKey || ev.deltaMode === 0) {
-        const k = ev.ctrlKey ? 0.012 : 0.0025;
-        return Math.exp(-ev.deltaY * k);
-      }
-      return ev.deltaY > 0 ? 1 / STEP : STEP;
+    // Chrome/Safari macOS: trackpad pinch is wheel+ctrlKey (ctrl not actually held).
+    // Plain wheel is two-finger pan or a mouse wheel — never zoom.
+    function isPinchWheel(ev) {
+      return ev.ctrlKey || ev.metaKey;
     }
 
-    scroller.addEventListener("wheel", (ev) => {
+    function wheelPx(ev) {
+      const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? scroller.clientHeight : 1;
+      return { x: ev.deltaX * unit, y: ev.deltaY * unit };
+    }
+
+    let gestureBase = 1;
+    let usingGesture = false;
+
+    function onWheel(ev) {
+      if (blocked()) return;
+      if (usingGesture) {
+        ev.preventDefault();
+        return;
+      }
+      if (isPinchWheel(ev)) {
+        ev.preventDefault();
+        zoomTo(zoom() * Math.exp(-ev.deltaY * 0.012), ev.clientX, ev.clientY);
+        return;
+      }
+      ev.preventDefault();
+      const d = wheelPx(ev);
+      scroller.scrollLeft += d.x;
+      scroller.scrollTop += d.y;
+    }
+
+    function onGestureStart(ev) {
       if (blocked()) return;
       ev.preventDefault();
-      zoomTo(zoom() * wheelFactor(ev), ev.clientX, ev.clientY);
-    }, { passive: false });
+      usingGesture = true;
+      gestureBase = zoom();
+    }
+
+    function onGestureChange(ev) {
+      if (!usingGesture) return;
+      ev.preventDefault();
+      zoomTo(gestureBase * ev.scale, ev.clientX, ev.clientY, false);
+    }
+
+    function onGestureEnd(ev) {
+      ev.preventDefault();
+      usingGesture = false;
+      commit(true);
+    }
+
+    scroller.addEventListener("wheel", onWheel, { passive: false });
+    scroller.addEventListener("gesturestart", onGestureStart);
+    scroller.addEventListener("gesturechange", onGestureChange);
+    scroller.addEventListener("gestureend", onGestureEnd);
 
     scroller.addEventListener("scroll", () => {
       if (restoring) return;
