@@ -10,10 +10,13 @@ const must = [
   ["sets window.__clerk_publishable_key before loading Clerk JS", /__clerk_publishable_key/],
   ["uses client.signIn.authenticateWithRedirect for Google", /client\.signIn/],
   ["loads Clerk JS from the instance frontend API host", /clerkScriptUrl/],
+  ["surfaces handleRedirectCallback failures", /clerkFail = err/],
+  ["requires a server-verified email before the invite gate", /if \(!session\.verified\)/],
 ];
 const forbidden = [
   ["blames a missing key after Clerk JS fails", "Clerk failed to load. Check CLERK_PUBLISHABLE_KEY."],
   ["blames a missing key on the Google button", "Clerk is not ready. Set CLERK_PUBLISHABLE_KEY and refresh."],
+  ["treats the browser Clerk email as server-verified", "session.email = data.email || handle()"],
 ];
 
 let failed = 0;
