@@ -21,10 +21,33 @@
   align-items: center;
   gap: 8px;
   height: 40px;
-  margin: 0 -2px 0 -4px;
-  padding: 0 2px 0 4px;
+  margin-right: 16px;
+  padding: 0 6px 0 6px;
   color: var(--ink);
   border-radius: var(--radius);
+}
+.brand-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 40px;
+  margin-left: 16px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--mute);
+}
+.brand-nav a {
+  color: var(--mute);
+  line-height: 1;
+}
+.brand-nav a:hover {
+  color: var(--ink);
+}
+.brand-nav a:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 2px;
 }
 .wordmark-mark {
   width: 16px;

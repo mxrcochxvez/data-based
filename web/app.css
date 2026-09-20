@@ -67,9 +67,9 @@ h1, h2, h3, p { margin: 0; }
   left: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;
   height: 40px;
-  padding: 0 12px 0 14px;
+  padding: 0 8px 0 8px;
   border-radius: 8px;
 }
 .brand strong { font-size: 14px; letter-spacing: -0.03em; }
@@ -79,7 +79,7 @@ h1, h2, h3, p { margin: 0; }
   height: 16px;
   background: var(--line);
 }
-.invite { color: var(--mute); margin-left: 4px; }
+.invite { color: var(--mute); }
 
 .tools {
   top: 64px;
@@ -477,11 +477,9 @@ textarea {
 }
 
 .wordmark, .brand a {
-  color: inherit;
   text-decoration: none;
 }
 .ghost-link, .invite { color: var(--mute); }
-.ghost-link:hover, .brand a:hover { color: var(--ink); }
 
 .screen {
   position: fixed;

@@ -45,13 +45,15 @@
       </span>
     </a>
     <span class="rule" aria-hidden="true"></span>
-    <a href="#/boards" id="board-name">Board</a>
-    <a class="ghost-link" href="#/boards">Boards</a>
-    <a class="invite" href="#/invite" id="invite-link">Invite</a>
+    <nav class="brand-nav" aria-label="Workspace">
+      <a href="#/boards" id="board-name">Board</a>
+      <a class="ghost-link" href="#/boards">Boards</a>
+      <a class="invite" href="#/invite" id="invite-link">Invite</a>
+    </nav>
   </header>
 
   <nav class="island rail tools" id="chrome-tools" aria-label="Tools">
-    <button type="button" class="tool" id="house" aria-label="Marketplace" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
+    <button type="button" class="tool" id="house" aria-label="Marketplace" aria-haspopup="dialog" aria-expanded="false" aria-controls="market" aria-pressed="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3l9 8.2V21h-7v-6H10v6H3V11.2Z"/></svg>
     </button>
     <button type="button" class="tool is-on" id="select" aria-label="Select" aria-pressed="true">
