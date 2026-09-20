@@ -96,6 +96,39 @@ function flow() {
 }
 
 const $ = (id) => document.getElementById(id);
+
+function announceGrant(msg) {
+  const live = $("grant-live");
+  if (!live) return;
+  live.textContent = "";
+  live.textContent = msg;
+}
+
+function trapTab(ev, root) {
+  if (ev.key !== "Tab" || !root) return;
+  const nodes = [...root.querySelectorAll("button, [href], input, textarea, select, [tabindex]:not([tabindex='-1'])")]
+    .filter((el) => !el.disabled && !el.hidden && el.offsetParent);
+  if (!nodes.length) {
+    ev.preventDefault();
+    root.focus();
+    return;
+  }
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  const inside = root.contains(document.activeElement);
+  if (ev.shiftKey && (!inside || document.activeElement === first)) {
+    ev.preventDefault();
+    last.focus();
+  } else if (!ev.shiftKey && (!inside || document.activeElement === last)) {
+    ev.preventDefault();
+    first.focus();
+  }
+}
+
+function markCardSel(el, on) {
+  el.classList.toggle("is-sel", on);
+  el.setAttribute("aria-selected", on ? "true" : "false");
+}
 const canvas = $("canvas");
 const scroller = $("scroller");
 const empty = $("empty");
@@ -118,6 +151,7 @@ const state = {
   drag: null,
   pan: null,
   placeAt: { x: 88, y: 200 },
+  camera: { pan: { x: 0, y: 0 }, zoom: 1 },
   dragged: false,
   editing: null,
 };
@@ -136,6 +170,7 @@ function emptyBoard(name) {
     edges: [],
     nextId: 1,
     placeAt: { x: 88, y: 200 },
+    camera: { pan: { x: 0, y: 0 }, zoom: 1 },
     grants: [{ id: "owner", handle: "you", role: "owner" }],
   };
 }
@@ -184,8 +219,12 @@ function hydrateBoard(b) {
   state.cards = (b.cards || []).map(normalizeCard);
   state.nextId = b.nextId || 1;
   state.placeAt = b.placeAt || { x: 88, y: 200 };
+  state.camera = (window.Camera && window.Camera.normalize)
+    ? window.Camera.normalize(b.camera)
+    : { pan: { x: (b.camera && b.camera.pan && b.camera.pan.x) || 0, y: (b.camera && b.camera.pan && b.camera.pan.y) || 0 }, zoom: (b.camera && b.camera.zoom) || 1 };
   state.sel = new Set();
   state.editing = null;
+  if (window.Camera && typeof window.Camera.hydrate === "function") window.Camera.hydrate(b);
   if (flow() && typeof flow().hydrateFromBoard === "function") flow().hydrateFromBoard(b);
   else state.edges = Array.isArray(b.edges) ? b.edges.slice() : [];
 }
@@ -196,6 +235,8 @@ function flushBoard() {
   b.cards = state.cards;
   b.nextId = state.nextId;
   b.placeAt = state.placeAt;
+  if (window.Camera && typeof window.Camera.flush === "function") window.Camera.flush(b);
+  else if (state.camera) b.camera = { pan: { x: state.camera.pan.x, y: state.camera.pan.y }, zoom: state.camera.zoom };
   if (flow() && typeof flow().flushToBoard === "function") flow().flushToBoard(b);
   else b.edges = Array.isArray(state.edges) ? state.edges : [];
 }
@@ -535,9 +576,10 @@ function esc(s) {
 }
 
 function comboCell(name, value, list) {
+  const labels = { types: "Type", defaults: "Default", fns: "Functions" };
   return `
     <div class="combo">
-      <input type="text" name="${name}" value="${esc(value || "")}" data-combo="${list}" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="combo-pop">
+      <input type="text" name="${name}" value="${esc(value || "")}" data-combo="${list}" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="combo-pop" aria-haspopup="listbox" aria-label="${labels[list] || name}">
       <button type="button" class="combo-chev" tabindex="-1" aria-label="Options">▾</button>
     </div>
   `;
@@ -635,8 +677,9 @@ function hideTip() {
 function setMarketOpen(on) {
   veil.hidden = !on;
   veil.classList.toggle("hidden", !on);
-  const house = $("house");
-  if (house && house.hasAttribute("aria-expanded")) house.setAttribute("aria-expanded", on ? "true" : "false");
+  document.querySelectorAll("[aria-controls='market']").forEach((el) => {
+    el.setAttribute("aria-expanded", on ? "true" : "false");
+  });
   document.body.classList.toggle("is-market", on);
   hideTip();
 }
@@ -649,10 +692,13 @@ function openMarket(section) {
   }
   const first = marketBody.querySelector(".offer");
   if (first) first.focus();
+  else if (market) market.focus();
 }
 
 function closeMarket() {
+  const wasOpen = veil && !veil.hidden;
   setMarketOpen(false);
+  if (wasOpen) $("house")?.focus();
 }
 
 function nextKindFor(kind) {
@@ -668,9 +714,11 @@ function cardNode(card) {
   el.style.top = card.y + "px";
   el.style.width = card.w + "px";
   el.style.height = card.h + "px";
+  el.style.zIndex = String(card.z || 1);
   el.dataset.id = String(card.id);
   el.tabIndex = 0;
   el.setAttribute("aria-label", `${KIND[card.kind].label} ${card.body.title}`);
+  el.setAttribute("aria-selected", state.sel.has(card.id) ? "true" : "false");
   const f = flow();
   const nextBtn = f && f.nextControl
     ? f.nextControl(card)
@@ -683,7 +731,7 @@ function cardNode(card) {
       el.innerHTML = `
         <div class="card-bar"><span class="card-kind">Note</span></div>
         <textarea class="note-text" data-note="${card.id}" placeholder="Write a note">${esc(card.body.note || "")}</textarea>
-        <span class="handle se" data-handle="se"></span>
+        <span class="handle se" data-handle="se" aria-hidden="true"></span>
       `;
     }
   } else {
@@ -695,7 +743,7 @@ function cardNode(card) {
       </div>
       <div class="card-body">${preview(card)}</div>
       ${nextBtn}
-      <span class="handle se" data-handle="se"></span>
+      <span class="handle se" data-handle="se" aria-hidden="true"></span>
     `;
   }
   if (f && f.decorate) f.decorate(el, card);
@@ -710,12 +758,26 @@ function drawWires() {
   }
   if (!wires) return;
   const parts = ['<defs><marker id="arrow" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><path d="M0 0L10 3.5L0 7Z" fill="#111"/></marker></defs>'];
+  const seen = new Set();
+  const bag = [];
+  function addEdge(from, to) {
+    if (from == null || to == null || String(from) === String(to)) return;
+    const key = String(from) + ">" + String(to);
+    if (seen.has(key)) return;
+    seen.add(key);
+    bag.push({ from, to });
+  }
+  (state.edges || []).forEach((e) => addEdge(e.from, e.to));
   for (const card of state.cards) {
-    if (!card.next) continue;
-    const to = state.cards.find((c) => c.id === card.next);
-    if (!to) continue;
-    const x1 = card.x + card.w;
-    const y1 = card.y + card.h / 2;
+    if (card.next != null) addEdge(card.id, card.next);
+    (card.links || []).forEach((to) => addEdge(card.id, to));
+  }
+  for (const edge of bag) {
+    const from = state.cards.find((c) => String(c.id) === String(edge.from));
+    const to = state.cards.find((c) => String(c.id) === String(edge.to));
+    if (!from || !to) continue;
+    const x1 = from.x + from.w;
+    const y1 = from.y + from.h / 2;
     const x2 = to.x;
     const y2 = to.y + to.h / 2;
     const mid = x1 + Math.max(40, (x2 - x1) / 2);
@@ -748,7 +810,9 @@ function paintCard(card) {
   el.style.top = card.y + "px";
   el.style.width = card.w + "px";
   el.style.height = card.h + "px";
+  el.style.zIndex = String(card.z || 1);
   el.classList.toggle("is-sel", state.sel.has(card.id));
+  el.setAttribute("aria-selected", state.sel.has(card.id) ? "true" : "false");
   drawWires();
 }
 
@@ -762,7 +826,7 @@ function selectedList() {
 
 function paintSel() {
   canvas.querySelectorAll(".card").forEach((n) => {
-    n.classList.toggle("is-sel", state.sel.has(Number(n.dataset.id)));
+    markCardSel(n, state.sel.has(Number(n.dataset.id)));
   });
 }
 
@@ -781,6 +845,7 @@ function place(kind, opts) {
     body,
     next: null,
     prev: o.prev || null,
+    z: (state.cards.reduce((m, c) => Math.max(m, c.z || 1), 1) + 1),
   };
   if (o.x == null && kind !== "note") {
     state.placeAt.x += 32;
@@ -792,9 +857,10 @@ function place(kind, opts) {
     else {
       const parent = state.cards.find((c) => c.id === o.prev);
       if (parent) {
-        parent.next = card.id;
         parent.links = (parent.links || []).concat(card.id);
+        parent.next = parent.links[parent.links.length - 1];
       }
+      state.edges = (state.edges || []).concat({ from: o.prev, to: card.id });
     }
   }
   state.sel = new Set([card.id]);
@@ -1140,6 +1206,7 @@ function moveCombo(list, dir) {
 canvas.addEventListener("click", (ev) => {
   const next = ev.target.closest("[data-next]");
   if (next) {
+    if (flow() && typeof flow().addLayer === "function") return;
     const card = state.cards.find((c) => String(c.id) === next.dataset.next);
     if (card) addLayer(card);
     return;
@@ -1200,6 +1267,18 @@ window.DB = {
   esc,
   normalizeCard,
 };
+
+if (typeof window.attachCamera === "function") {
+  window.attachCamera({
+    canvas,
+    scroller,
+    state,
+    persist,
+    world: $("world"),
+    label: $("zoom-pct"),
+    blocked: () => editDlg.open || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
+  });
+}
 
 if (typeof window.attachSelect === "function") {
   window.attachSelect({

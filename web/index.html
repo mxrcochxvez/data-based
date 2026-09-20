@@ -16,17 +16,19 @@
     FORM: Canon FigJam / Whimsical / Linear craft. User named the bar. Seed skipped for the standing exit.
     FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
   -->
-  <div class="board" id="scroller">
-    <div class="canvas" id="canvas">
-      <svg class="wires" id="wires" aria-hidden="true"></svg>
-      <div class="marquee" id="marquee" hidden></div>
+  <div class="board" id="scroller" role="main" aria-label="Board">
+    <div class="world" id="world">
+      <div class="canvas" id="canvas" role="application" aria-label="Canvas">
+        <svg class="wires" id="wires" aria-hidden="true"></svg>
+        <div class="marquee" id="marquee" hidden></div>
+      </div>
     </div>
   </div>
 
   <aside class="hud-empty" id="empty">
     <h1>Place a table on the board.</h1>
     <p>Start with a table. The + adds a next-layer card. Drag a port onto another card to share a module — many tables can feed one repo. Notes stay put.</p>
-    <button type="button" class="btn" id="empty-open">Open marketplace</button>
+    <button type="button" class="btn" id="empty-open" aria-haspopup="dialog" aria-controls="market" aria-expanded="false">Open marketplace</button>
   </aside>
 
   <header class="island brand" id="chrome-brand">
@@ -52,57 +54,61 @@
     <button type="button" class="tool" id="house" aria-label="Marketplace" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3l9 8.2V21h-7v-6H10v6H3V11.2Z"/></svg>
     </button>
-    <button type="button" class="tool is-on" id="select" aria-label="Select">
+    <button type="button" class="tool is-on" id="select" aria-label="Select" aria-pressed="true">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8.2-6.2 1.6L16 21l-3.2-1.2L9.6 13 5 3Z"/></svg>
     </button>
-    <button type="button" class="tool" id="pan" aria-label="Pan">
+    <button type="button" class="tool" id="pan" aria-label="Pan" aria-pressed="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11h1V5.5a1.5 1.5 0 0 1 3 0V11h1V7.5a1.5 1.5 0 0 1 3 0V14c0 4-2.2 7-7 7-3.6 0-6-2.2-6-5.5V12h2v-.2Z"/></svg>
     </button>
+    <button type="button" class="tool zoom-pct" id="zoom-pct" aria-label="Reset zoom" title="Reset zoom · 0">100%</button>
     <button type="button" class="tool" id="note-tool" aria-label="Note">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h8l2 2v10H3V2Zm8 0v2h2"/></svg>
     </button>
     <span class="rule" aria-hidden="true"></span>
-    <button type="button" class="tool" data-nav="db" aria-label="Databases">
+    <button type="button" class="tool" data-nav="db" aria-label="Databases" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
       <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg>
     </button>
-    <button type="button" class="tool" data-nav="logic" aria-label="Effects">
+    <button type="button" class="tool" data-nav="logic" aria-label="Effects" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h8v3H9v7H7V6H4V3Z"/></svg>
     </button>
-    <button type="button" class="tool" data-nav="api" aria-label="APIs">
+    <button type="button" class="tool" data-nav="api" aria-label="APIs" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h4v2H3V5Zm6 0h4v2H9V5ZM3 9h10v2H3V9Z"/></svg>
     </button>
   </nav>
 
-  <p class="hint" id="chrome-hint">H marketplace · drag empty to select · ⌘A all · ⌫ delete</p>
+  <p class="hint" id="chrome-hint">H marketplace · drag empty to select · ⌘A all · + − zoom · 0 reset · ⌫ delete</p>
 
-  <section class="screen" id="screen-boards" hidden>
+  <section class="screen" id="screen-boards" hidden role="main" aria-labelledby="boards-title">
     <div class="sheet">
-      <h1>Boards</h1>
+      <h1 id="boards-title">Boards</h1>
       <p class="lead">Each board is its own canvas. Invite is a grant list. There is no public signup.</p>
       <form class="create" id="new-board">
-        <input type="text" name="name" placeholder="Board name" required autocomplete="off">
+        <label class="sr-only" for="board-name-input">Board name</label>
+        <input type="text" id="board-name-input" name="name" placeholder="Board name" required autocomplete="off">
         <button type="submit" class="btn">Create board</button>
       </form>
       <ul class="board-list" id="board-list"></ul>
     </div>
   </section>
 
-  <section class="screen" id="screen-invite" hidden>
+  <section class="screen" id="screen-invite" hidden role="main" aria-labelledby="invite-title">
     <div class="sheet">
       <a href="#/" class="back" id="invite-back">Back to board</a>
       <h1 id="invite-title">Invite</h1>
       <p class="lead">Grant access by email or handle. People you add appear on this board. You can remove anyone except the owner. No sign-up.</p>
       <form class="create" id="grant-form">
-        <input type="text" name="handle" placeholder="email or handle" required autocomplete="off">
+        <label class="sr-only" for="grant-handle">Email or handle</label>
+        <input type="text" id="grant-handle" name="handle" placeholder="email or handle" required autocomplete="off" aria-describedby="grant-err">
         <button type="submit" class="btn">Grant access</button>
       </form>
-      <p class="parse-err" id="grant-err" hidden></p>
+      <p class="parse-err" id="grant-err" hidden role="alert"></p>
+      <p class="sr-only" id="grant-live" aria-live="polite"></p>
       <ul class="grant-list" id="grant-list"></ul>
     </div>
   </section>
 
   <div class="veil hidden" id="veil" hidden>
-    <aside class="market" id="market" role="dialog" aria-modal="true" aria-labelledby="market-title" aria-describedby="market-lead">
+    <aside class="market" id="market" role="dialog" aria-modal="true" aria-labelledby="market-title" aria-describedby="market-lead" tabindex="-1">
       <header class="market-head">
         <h2 id="market-title">Marketplace</h2>
         <button type="button" class="text-btn" id="market-close">Close</button>
@@ -114,14 +120,14 @@
 
   <div class="tip" id="tip" role="tooltip" hidden></div>
 
-  <dialog class="modal" id="edit">
+  <dialog class="modal" id="edit" role="dialog" aria-modal="true" aria-labelledby="edit-title">
     <form method="dialog" class="modal-form" id="edit-form">
       <header class="modal-head">
         <div>
           <h2 id="edit-title">Edit</h2>
           <p id="edit-kind"></p>
         </div>
-        <p class="parse-err" id="parse-err" hidden></p>
+        <p class="parse-err" id="parse-err" hidden role="alert" aria-live="assertive"></p>
       </header>
       <div class="modal-body" id="edit-body"></div>
       <footer class="modal-foot">
@@ -135,6 +141,7 @@
   <script src="js/persist.js"></script>
   <script src="js/boards.js"></script>
   <script src="highlight.js"></script>
+  <script src="js/camera.js"></script>
   <script src="js/select.js"></script>
   <script src="js/flow.js"></script>
   <script src="app.js"></script>
