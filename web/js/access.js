@@ -52,6 +52,8 @@
   let readyPromise = null;
   let resolveReady = null;
   let clerkPk = "";
+  let clerkStatus = "off";
+  let clerkFail = "";
 
   function setBodyGate(name) {
     const who = $("screen-who");
@@ -140,62 +142,108 @@
       .catch(() => null);
   }
 
-  function loadClerkScript() {
-    if (global.Clerk && global.Clerk.load) return Promise.resolve();
+  function clerkScriptUrl(pk) {
+    try {
+      const encoded = String(pk || "").replace(/^pk_(test|live)_/, "");
+      const pad = "=".repeat((4 - (encoded.length % 4)) % 4);
+      const host = atob(encoded + pad).replace(/\$$/, "").trim();
+      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) {
+        return "https://" + host + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
+      }
+    } catch (_) {}
+    return CLERK_JS;
+  }
+
+  function loadClerkScript(pk) {
+    if (global.Clerk && typeof global.Clerk.load === "function") return Promise.resolve();
+    global.__clerk_publishable_key = pk;
+    const stale = document.querySelector("script[data-clerk-js]");
+    if (stale && !global.Clerk) stale.remove();
     return new Promise((resolve, reject) => {
       const existing = document.querySelector("script[data-clerk-js]");
       if (existing) {
         existing.addEventListener("load", () => resolve());
-        existing.addEventListener("error", () => reject(new Error("clerk")));
+        existing.addEventListener("error", () => reject(new Error("Clerk JS failed to download")));
         return;
       }
       const s = document.createElement("script");
-      s.src = CLERK_JS;
+      s.src = clerkScriptUrl(pk);
       s.async = true;
+      s.crossOrigin = "anonymous";
       s.dataset.clerkJs = "1";
+      s.setAttribute("data-clerk-publishable-key", pk);
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error("clerk"));
+      s.onerror = () => reject(new Error("Clerk JS failed to download"));
       document.head.appendChild(s);
     });
   }
 
   function bootClerk(pk) {
     clerkPk = pk;
-    return loadClerkScript().then(function () {
-      const Ctor = global.Clerk;
-      if (typeof Ctor === "function") {
-        const inst = new Ctor(pk);
+    clerkStatus = "loading";
+    clerkFail = "";
+    return loadClerkScript(pk).then(function () {
+      const loaded = global.Clerk;
+      if (typeof loaded === "function") {
+        const inst = new loaded(pk);
         return inst.load().then(function () {
           global.Clerk = inst;
+          clerkStatus = "ready";
           return inst;
         });
       }
-      if (Ctor && typeof Ctor.load === "function") {
-        if (Ctor.publishableKey) return Ctor.load().then(function () { return Ctor; });
-        return Ctor.load({ publishableKey: pk }).then(function () { return Ctor; });
+      if (loaded && typeof loaded.load === "function") {
+        return loaded.load({ publishableKey: pk }).then(function () {
+          clerkStatus = "ready";
+          return loaded;
+        });
       }
-      throw new Error("clerk");
+      throw new Error("Clerk JS did not initialize");
+    }).catch(function (err) {
+      clerkStatus = "failed";
+      clerkFail = err && err.message ? String(err.message) : "Clerk JS did not initialize";
+      throw err;
     });
+  }
+
+  function googleRedirect(clerk) {
+    const signIn = clerk && clerk.client && clerk.client.signIn;
+    if (signIn && typeof signIn.authenticateWithRedirect === "function") {
+      return signIn.authenticateWithRedirect.bind(signIn);
+    }
+    if (clerk && typeof clerk.authenticateWithRedirect === "function") {
+      return clerk.authenticateWithRedirect.bind(clerk);
+    }
+    return null;
   }
 
   function signInGoogle() {
     const err = $("who-err");
     const clerk = global.Clerk;
-    if (!clerk || typeof clerk.authenticateWithRedirect !== "function") {
+    const redirect = googleRedirect(clerk);
+    if (!redirect) {
       if (err) {
         err.hidden = false;
-        err.textContent = "Clerk is not ready. Set CLERK_PUBLISHABLE_KEY and refresh.";
+        if (clerkStatus === "failed") {
+          err.textContent = clerkFail || "Clerk failed to start. Check this host is allowed on the Clerk instance.";
+        } else if (clerkStatus === "loading") {
+          err.textContent = "Clerk is still starting. Try again in a moment.";
+        } else if (!clerkPk) {
+          err.textContent = "Server did not send a Clerk publishable key. Set CLERK_PUBLISHABLE_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, or VITE_CLERK_PUBLISHABLE_KEY and redeploy.";
+        } else {
+          err.textContent = "Google sign-in is not ready yet. Refresh and try again.";
+        }
       }
       return;
     }
-    clerk.authenticateWithRedirect({
+    redirect({
       strategy: "oauth_google",
       redirectUrl: window.location.href,
       redirectUrlComplete: window.location.origin + "/" + (location.hash || ""),
     }).catch(function () {
       if (err) {
         err.hidden = false;
-        err.textContent = "Google sign-in failed. You need a Clerk invitation for this email.";
+        err.textContent = "Google sign-in failed. Enable Google on the Clerk instance, or invite this email.";
       }
     });
   }
@@ -249,24 +297,35 @@
         if (cfg && cfg.clerk && cfg.publishableKey) {
           session.clerk = true;
           return bootClerk(cfg.publishableKey).then(function (clerk) {
-            if (clerk && clerk.addListener) {
-              clerk.addListener(function (res) {
-                if (res && res.user && session.ready && session.denied) afterSession();
-              });
-            }
-            if (!clerk.user) {
-              showWho();
-              finish(false);
-              return false;
-            }
-            return afterSession();
-          }).catch(function () {
-            showWho("Clerk failed to load. Check CLERK_PUBLISHABLE_KEY.");
+            const href = String(location.href);
+            const bounced = /__clerk|clerk_status/i.test(href) && typeof clerk.handleRedirectCallback === "function"
+              ? clerk.handleRedirectCallback().then(function () { return clerk; }).catch(function () { return clerk; })
+              : Promise.resolve(clerk);
+            return bounced.then(function (ready) {
+              if (ready && ready.addListener) {
+                ready.addListener(function (res) {
+                  if (res && res.user && session.ready && session.denied) afterSession();
+                });
+              }
+              if (!ready.user) {
+                showWho();
+                finish(false);
+                return false;
+              }
+              return afterSession();
+            });
+          }).catch(function (err) {
+            const detail = err && err.message ? String(err.message) : "";
+            showWho(
+              detail && detail !== "clerk"
+                ? "Clerk failed to start. " + detail
+                : "Clerk failed to start. Check this host is allowed on the Clerk instance."
+            );
             finish(false);
             return false;
           });
         }
-        showWho("Clerk is not configured. Set CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY.");
+        showWho("Server did not send a Clerk publishable key. Set CLERK_PUBLISHABLE_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, or VITE_CLERK_PUBLISHABLE_KEY on Vercel and redeploy.");
         finish(false);
         return false;
       });
