@@ -35,10 +35,16 @@ function readStore() {
 
 function writeStore(doc) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  const prev = readStore();
+  const incomingAt = Number(doc.updatedAt) || Date.now();
+  const prevAt = Number(prev.updatedAt) || 0;
+  if (Array.isArray(prev.boards) && prev.boards.length && incomingAt < prevAt) {
+    return prev;
+  }
   const next = {
     boards: Array.isArray(doc.boards) ? doc.boards : [],
     currentId: doc.currentId || (doc.boards && doc.boards[0] && doc.boards[0].id) || null,
-    updatedAt: Number(doc.updatedAt) || Date.now(),
+    updatedAt: incomingAt,
   };
   fs.writeFileSync(STORE, JSON.stringify(next, null, 2));
   return next;

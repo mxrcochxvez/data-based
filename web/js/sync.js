@@ -69,15 +69,30 @@
     return max;
   }
 
+  function liveStore() {
+    if (global.DB && global.DB.store) return global.DB.store;
+    if (global.Boards && global.Boards.store) return global.Boards.store;
+    return null;
+  }
+
+  function fn(name) {
+    if (global.DB && typeof global.DB[name] === "function") return global.DB[name];
+    if (typeof global[name] === "function") return global[name];
+    if (global.Boards && typeof global.Boards[name] === "function") return global.Boards[name];
+    return null;
+  }
+
   function readDoc() {
-    if (global.DB && typeof global.DB.flushBoard === "function") {
-      try { global.DB.flushBoard(); } catch (_) {}
+    const flush = fn("flushBoard");
+    if (flush) {
+      try { flush(); } catch (_) {}
     }
     if (global.Persist && typeof global.Persist.readSync === "function") {
       const fromPersist = global.Persist.readSync();
       if (fromPersist) return fromPersist;
     }
-    if (global.DB && global.DB.store && Array.isArray(global.DB.store.boards)) return global.DB.store;
+    const store = liveStore();
+    if (store && Array.isArray(store.boards)) return store;
     try {
       return parse(localStorage.getItem(KEY) || localStorage.getItem(LEGACY) || "");
     } catch (_) {
@@ -96,10 +111,11 @@
   }
 
   function flushLocal() {
-    if (global.DB && typeof global.DB.flushBoard === "function") {
-      try { global.DB.flushBoard(); } catch (_) {}
+    const flush = fn("flushBoard");
+    if (flush) {
+      try { flush(); } catch (_) {}
     }
-    const store = global.DB && global.DB.store;
+    const store = liveStore();
     if (global.Persist && typeof global.Persist.flush === "function" && store) {
       global.Persist.flush({
         boards: store.boards,
@@ -113,16 +129,21 @@
   }
 
   function applyRemote(doc) {
-    const db = global.DB;
-    if (db && db.store && Array.isArray(doc.boards)) {
-      db.store.boards.length = 0;
-      for (let i = 0; i < doc.boards.length; i++) db.store.boards.push(doc.boards[i]);
-      db.store.currentId = doc.currentId;
-      db.store.updatedAt = doc.updatedAt;
-      const board = db.store.boards.find((b) => b.id === db.store.currentId) || db.store.boards[0];
-      if (board && typeof db.hydrateBoard === "function") db.hydrateBoard(board);
-      if (typeof db.renderCards === "function") db.renderCards();
-      if (typeof db.renderBoardChrome === "function") db.renderBoardChrome();
+    const store = liveStore();
+    if (store && Array.isArray(doc.boards)) {
+      store.boards.length = 0;
+      for (let i = 0; i < doc.boards.length; i++) store.boards.push(doc.boards[i]);
+      store.currentId = doc.currentId;
+      store.updatedAt = doc.updatedAt;
+      const board = store.boards.find((b) => b.id === store.currentId) || store.boards[0];
+      const hydrate = fn("hydrateBoard") || fn("hydrate");
+      if (board && hydrate) {
+        try { hydrate(board); } catch (_) {}
+      }
+      const render = fn("renderCards");
+      const chrome = fn("renderBoardChrome") || fn("chrome");
+      try { if (render) render(); } catch (_) {}
+      try { if (chrome) chrome(); } catch (_) {}
     }
     writeLocal(doc);
     lastPayload = JSON.stringify(doc);
@@ -221,9 +242,13 @@
     pull,
   };
 
+  function start() {
+    setTimeout(boot, 0);
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
+    document.addEventListener("DOMContentLoaded", start);
   } else {
-    boot();
+    start();
   }
 })(window);
