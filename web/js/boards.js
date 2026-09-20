@@ -110,6 +110,13 @@
     }[c]));
   }
 
+  function announceGrant(msg) {
+    const live = $("grant-live");
+    if (!live) return;
+    live.textContent = "";
+    live.textContent = msg;
+  }
+
   function renderBoardChrome() {
     const b = currentBoard();
     const name = $("board-name");
@@ -155,6 +162,10 @@
     if (boardsEl) boardsEl.hidden = !boards;
     if (inviteEl) inviteEl.hidden = !invite;
     document.body.classList.toggle("is-page", boards || invite);
+    const scroller = $("scroller");
+    if (scroller) scroller.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+    const tools = $("chrome-tools");
+    if (tools) tools.setAttribute("aria-hidden", boards || invite ? "true" : "false");
     if (api && api.showEmpty) api.showEmpty();
     if (boards) renderBoardList();
     if (invite) renderGrants(inviteId || currentBoard().id);
@@ -236,6 +247,7 @@
             err.hidden = false;
             err.textContent = "Already on this board.";
           }
+          announceGrant("Already on this board.");
           return;
         }
         b.grants.push({ id: uid(), handle, role: "granted" });
@@ -243,6 +255,7 @@
         saveNow();
         ev.target.reset();
         renderGrants(b.id);
+        announceGrant("Granted access to " + handle);
       });
     }
 
@@ -252,10 +265,13 @@
         const btn = ev.target.closest("[data-revoke]");
         if (!btn) return;
         const b = currentBoard();
+        const row = btn.closest("li");
+        const who = row ? row.querySelector("span") && row.querySelector("span").textContent : "";
         b.grants = b.grants.filter((g) => g.id !== btn.dataset.revoke);
         b.updatedAt = Date.now();
         saveNow();
         renderGrants(b.id);
+        announceGrant(who ? "Removed " + who : "Access removed");
       });
     }
 

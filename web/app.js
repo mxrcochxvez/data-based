@@ -680,6 +680,8 @@ function setMarketOpen(on) {
   document.querySelectorAll("[aria-controls='market']").forEach((el) => {
     el.setAttribute("aria-expanded", on ? "true" : "false");
   });
+  const house = $("house");
+  if (house) house.setAttribute("aria-pressed", on ? "true" : "false");
   document.body.classList.toggle("is-market", on);
   hideTip();
 }
@@ -1154,7 +1156,10 @@ function placeComboPop(combo) {
 function closeCombos() {
   if (comboOpen) {
     const input = comboOpen.querySelector("input");
-    if (input && input.hasAttribute("aria-expanded")) input.setAttribute("aria-expanded", "false");
+    if (input) {
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+    }
   }
   comboOpen = null;
   if (!comboPop) return;
@@ -1162,27 +1167,44 @@ function closeCombos() {
   comboPop.innerHTML = "";
 }
 
+function syncComboActive(input) {
+  if (!comboPop || !input) return;
+  const on = comboPop.querySelector("li.is-on[data-val]");
+  comboPop.querySelectorAll('[role="option"]').forEach((el) => {
+    el.setAttribute("aria-selected", el === on ? "true" : "false");
+  });
+  if (on) {
+    if (!on.id) on.id = "combo-opt-" + [...comboPop.children].indexOf(on);
+    input.setAttribute("aria-activedescendant", on.id);
+  } else input.removeAttribute("aria-activedescendant");
+}
+
 function openCombo(combo, filter) {
   if (!comboPop) return;
   if (comboOpen && comboOpen !== combo) {
     const prev = comboOpen.querySelector("input");
-    if (prev && prev.hasAttribute("aria-expanded")) prev.setAttribute("aria-expanded", "false");
+    if (prev) {
+      prev.setAttribute("aria-expanded", "false");
+      prev.removeAttribute("aria-activedescendant");
+    }
   }
   comboOpen = combo;
   const input = combo.querySelector("input");
   if (input) {
-    if (!input.hasAttribute("role")) input.setAttribute("role", "combobox");
-    if (!input.hasAttribute("aria-autocomplete")) input.setAttribute("aria-autocomplete", "list");
-    if (!input.hasAttribute("aria-controls")) input.setAttribute("aria-controls", "combo-pop");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "combo-pop");
+    input.setAttribute("aria-haspopup", "listbox");
     input.setAttribute("aria-expanded", "true");
   }
   const q = String(filter ?? input.value).toLowerCase();
   const opts = comboOpts(input);
   const shown = opts.filter((o) => !q || String(o).toLowerCase().includes(q));
   comboPop.innerHTML = shown.length
-    ? shown.map((o) => `<li role="option" data-val="${esc(o)}">${esc(o || "(none)")}</li>`).join("")
+    ? shown.map((o, i) => `<li role="option" id="combo-opt-${i}" data-val="${esc(o)}" aria-selected="false">${esc(o || "(none)")}</li>`).join("")
     : `<li class="is-empty">Keep typing a custom value.</li>`;
   comboPop.querySelector("li[data-val]")?.classList.add("is-on");
+  syncComboActive(input);
   placeComboPop(combo);
 }
 
@@ -1201,6 +1223,7 @@ function moveCombo(list, dir) {
   const next = items[Math.max(0, Math.min(items.length - 1, (i < 0 ? 0 : i) + dir))];
   next.classList.add("is-on");
   next.scrollIntoView({ block: "nearest" });
+  if (comboOpen) syncComboActive(comboOpen.querySelector("input"));
 }
 
 canvas.addEventListener("click", (ev) => {
@@ -1317,13 +1340,17 @@ veil.addEventListener("click", (ev) => {
 $("select").addEventListener("click", () => {
   state.tool = "select";
   $("select").classList.add("is-on");
+  $("select").setAttribute("aria-pressed", "true");
   $("pan").classList.remove("is-on");
+  $("pan").setAttribute("aria-pressed", "false");
   canvas.classList.remove("is-pan");
 });
 $("pan").addEventListener("click", () => {
   state.tool = "pan";
   $("pan").classList.add("is-on");
+  $("pan").setAttribute("aria-pressed", "true");
   $("select").classList.remove("is-on");
+  $("select").setAttribute("aria-pressed", "false");
   canvas.classList.add("is-pan");
 });
 
@@ -1445,6 +1472,7 @@ editBody.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape") {
     ev.preventDefault();
+    ev.stopPropagation();
     closeCombos();
   }
 });
@@ -1510,6 +1538,9 @@ function showView(name, inviteId) {
   $("screen-boards").hidden = !boards;
   $("screen-invite").hidden = !invite;
   document.body.classList.toggle("is-page", boards || invite);
+  if (scroller) scroller.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+  const tools = $("chrome-tools");
+  if (tools) tools.setAttribute("aria-hidden", boards || invite ? "true" : "false");
   showEmpty();
   if (boards) renderBoardList();
   if (invite) renderGrants(inviteId || currentBoard().id);
@@ -1577,21 +1608,26 @@ $("grant-form").addEventListener("submit", (ev) => {
   if (b.grants.some((g) => g.handle === handle)) {
     err.hidden = false;
     err.textContent = "Already on this board.";
+    announceGrant("Already on this board.");
     return;
   }
   b.grants.push({ id: uid(), handle, role: "granted" });
   persist();
   ev.target.reset();
   renderGrants(b.id);
+  announceGrant("Granted access to " + handle);
 });
 
 $("grant-list").addEventListener("click", (ev) => {
   const btn = ev.target.closest("[data-revoke]");
   if (!btn) return;
   const b = currentBoard();
+  const row = btn.closest("li");
+  const who = row ? row.querySelector("span")?.textContent : "";
   b.grants = b.grants.filter((g) => g.id !== btn.dataset.revoke);
   persist();
   renderGrants(b.id);
+  announceGrant(who ? "Removed " + who : "Access removed");
 });
 
 window.addEventListener("hashchange", route);
@@ -1599,10 +1635,21 @@ window.addEventListener("hashchange", route);
 window.addEventListener("keydown", (ev) => {
   const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement || ev.target instanceof HTMLSelectElement;
   if (ev.key === "Escape") {
+    if (comboOpen) {
+      closeCombos();
+      ev.preventDefault();
+      return;
+    }
     if (editDlg.open) {
       state.editing = null;
       editDlg.close();
-    } else closeMarket();
+    } else if (veil && !veil.hidden) {
+      closeMarket();
+    }
+    return;
+  }
+  if (editDlg.open) {
+    trapTab(ev, editDlg);
     return;
   }
   if (document.body.classList.contains("is-market")) {
@@ -1611,20 +1658,7 @@ window.addEventListener("keydown", (ev) => {
       closeMarket();
       return;
     }
-    if (ev.key === "Tab") {
-      const nodes = [...market.querySelectorAll("button, [href], input, textarea, select, [tabindex]:not([tabindex='-1'])")]
-        .filter((el) => !el.disabled && el.offsetParent);
-      if (!nodes.length) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (ev.shiftKey && document.activeElement === first) {
-        ev.preventDefault();
-        last.focus();
-      } else if (!ev.shiftKey && document.activeElement === last) {
-        ev.preventDefault();
-        first.focus();
-      }
-    }
+    trapTab(ev, market);
     return;
   }
   if (typing) return;
