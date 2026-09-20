@@ -6,16 +6,26 @@ The UI is HTML, CSS, and JavaScript. Bend stays for `board.bend` laws and proofs
 
 ## How to run
 
-From the repo:
+Static + authed sync (serves `web/` and writes `web/data/store.json`):
+
+```bash
+node web/sync-server.mjs
+```
+
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Default port is `8765` (`PORT` overrides).
+
+While signed in, the client PUTs the full `databased.v1` blob to `/api/sync` every 20s, and again on `visibilitychange` (hidden) and `beforeunload`. On load it GETs `/api/sync` and takes the server copy only if `updatedAt` is newer. Last-write-wins: a newer local draft is not replaced. Concurrent edits can drop the older write.
+
+Auth gate (`web/js/sync.js`): if Clerk is on the page, require `Clerk.user` / `Clerk.session`. Else a `databased.token` or `DB.authToken` counts. Else the local “signed in as you” stub is authed. Set `localStorage.databased.user` to `signed-out` (or `DB.user = null`) for local-only; no network, no console errors.
+
+Static only (localStorage, no sync endpoint):
 
 ```bash
 cd web
 python3 -m http.server 8765
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/).
-
-Or open `web/index.html` from disk. A local server is the reliable path.
+Or open `web/index.html` from disk. A local server is the reliable path. Without the sync server, authed push/pull fail quietly.
 
 Bend 2 is optional unless you are changing laws:
 
@@ -34,7 +44,7 @@ bend PROOF.bend
 - Table cards carry a `+` that adds the next layer (repo → effects → controller) and draws an arrow. Notes are not in that chain
 - Note cards: toolstrip sticky, or marketplace. Click into the card to write. Resize from the corner
 - Empty-state copy is a viewport HUD. Panning the dots does not move it
-- `#/boards` creates and switches boards. `#/invite/:id` grants access by email or handle. No public signup. Boards persist in `localStorage`
+- `#/boards` creates and switches boards. `#/invite/:id` grants access by email or handle. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the local server.
 - `V` select, Space pan, `N` note, `Esc` close, `⌫` delete the selected card
 
 ## Native path
@@ -44,6 +54,7 @@ Abandoned. `main.bend` / `view.bend` / `tick.bend` still typecheck as a Bend `Ap
 ## Files
 
 - `web/index.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the product
+- `web/js/persist.js`, `web/js/sync.js`, `web/sync-server.mjs`: localStorage blob + authed `/api/sync`
 - `board.bend`: `Stamp`, `Body`, `Board`, `Cmd`, `Board.apply`
 - `LAWS.bend`, `PROOF.bend`: `add_zero`, `stamp_eq_refl`, `empty_elems_len`
 - `auth.bend`, `collab.bend`, `ai.bend`: Bend stubs (invite name, TCP wire, `Ai.parse`)
