@@ -9,6 +9,15 @@
     return document.getElementById(id);
   }
 
+  function ownerHandle() {
+    const access = global.DataBasedAccess;
+    if (access && typeof access.handle === "function") {
+      const who = access.handle();
+      if (who) return who;
+    }
+    return "you";
+  }
+
   function emptyBoard(name) {
     return {
       id: uid(),
@@ -18,7 +27,7 @@
       nextId: 1,
       placeAt: { x: 88, y: 200 },
       camera: { pan: { x: 0, y: 0 }, zoom: 1 },
-      grants: [{ id: "owner", handle: "you", role: "owner" }],
+      grants: [{ id: "owner", handle: ownerHandle(), role: "owner" }],
       updatedAt: Date.now(),
     };
   }
@@ -59,19 +68,24 @@
 
   function snapshot() {
     store.updatedAt = Date.now();
-    return { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
+    const doc = { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
+    return Persist && typeof Persist.snapshotDoc === "function" ? Persist.snapshotDoc(doc) : doc;
   }
 
   function flushBoard() {
     const b = currentBoard();
     if (!b || !api) return;
     const s = api.state;
+    if (Persist && typeof Persist.layoutCard === "function") {
+      (s.cards || []).forEach((c) => Persist.layoutCard(c));
+    }
     b.cards = s.cards;
     b.edges = Array.isArray(s.edges) ? s.edges : (b.edges || []);
     b.nextId = s.nextId;
     b.placeAt = s.placeAt;
     if (global.Camera && typeof global.Camera.flush === "function") global.Camera.flush(b);
     else if (s.camera) b.camera = { pan: { x: s.camera.pan.x, y: s.camera.pan.y }, zoom: s.camera.zoom };
+    if (Persist && typeof Persist.snapshotCamera === "function") b.camera = Persist.snapshotCamera(b.camera);
     b.updatedAt = Date.now();
     const flow = global.DataBasedFlow;
     if (flow && typeof flow.flushToBoard === "function") flow.flushToBoard(b);
@@ -80,7 +94,10 @@
   function hydrateBoard(b) {
     store.currentId = b.id;
     if (!api) return;
-    const cards = (b.cards || []).map((c) => api.normalizeCard(c));
+    const cards = (b.cards || []).map((c) => {
+      if (Persist && typeof Persist.layoutCard === "function") Persist.layoutCard(c);
+      return api.normalizeCard(c);
+    });
     api.state.cards = cards;
     api.state.edges = Array.isArray(b.edges) ? b.edges.slice() : [];
     api.state.nextId = b.nextId || 1;
@@ -132,7 +149,7 @@
       <li>
         <a href="#/" data-open="${b.id}">${esc(b.name)}</a>
         <span class="role">${(b.cards || []).length} cards</span>
-        <a href="#/invite/${b.id}">Invite</a>
+        <a href="#/invite/${b.id}">Invite to board</a>
       </li>
     `).join("");
   }
@@ -142,7 +159,7 @@
     const title = $("invite-title");
     const back = $("invite-back");
     const list = $("grant-list");
-    if (title) title.textContent = "Invite · " + b.name;
+    if (title) title.textContent = "Invite to this board · " + b.name;
     if (back) back.href = "#/";
     if (!list) return;
     list.innerHTML = (b.grants || []).map((g) => `
@@ -154,21 +171,71 @@
     `).join("");
   }
 
+  function renderPeople() {
+    const access = global.DataBasedAccess;
+    const list = $("user-list");
+    const groups = $("boards-by-user");
+    if (!access || !access.isSystem()) {
+      if (list) list.innerHTML = "";
+      if (groups) groups.innerHTML = "<p class=\"lead\">Only the system user can see this directory.</p>";
+      return;
+    }
+    Promise.all([access.users(), access.boards()]).then(([usersDoc, boardsDoc]) => {
+      if (list) {
+        list.innerHTML = (usersDoc.users || []).map((u) => `
+          <li>
+            <span>${esc(u.email)}</span>
+            <span class="role">${esc(u.status)}${u.system ? " · system" : ""}</span>
+            ${u.system || u.status === "revoked" ? "" : `<button type="button" class="text-btn" data-app-revoke="${esc(u.email)}">Revoke app access</button>`}
+            ${u.status === "revoked" ? `<button type="button" class="text-btn" data-app-invite="${esc(u.email)}">Restore</button>` : ""}
+          </li>
+        `).join("");
+      }
+      if (groups) {
+        groups.innerHTML = (boardsDoc.users || []).map((u) => {
+          const owned = (u.owned || []).map((b) => `
+            <li>
+              <a href="#/" data-open="${b.id}">${esc(b.name)}</a>
+              <span class="role">owner · ${b.cards} cards</span>
+            </li>
+          `).join("");
+          const invited = (u.invited || []).map((b) => `
+            <li>
+              <a href="#/" data-open="${b.id}">${esc(b.name)}</a>
+              <span class="role">${esc(b.role)} · ${b.cards} cards</span>
+            </li>
+          `).join("");
+          return `<section class="user-boards">
+            <h3>${esc(u.email)}</h3>
+            <ul class="board-list">${owned || invited ? owned + invited : "<li><span class=\"role\">No boards</span></li>"}</ul>
+          </section>`;
+        }).join("") || "<p class=\"lead\">No boards yet.</p>";
+      }
+    }).catch(() => {
+      if (list) list.innerHTML = "";
+      if (groups) groups.innerHTML = "<p class=\"lead\">Could not load the directory.</p>";
+    });
+  }
+
   function showView(name, inviteId) {
     const boards = name === "boards";
     const invite = name === "invite";
+    const people = name === "people";
     const boardsEl = $("screen-boards");
     const inviteEl = $("screen-invite");
+    const peopleEl = $("screen-people");
     if (boardsEl) boardsEl.hidden = !boards;
     if (inviteEl) inviteEl.hidden = !invite;
-    document.body.classList.toggle("is-page", boards || invite);
+    if (peopleEl) peopleEl.hidden = !people;
+    document.body.classList.toggle("is-page", boards || invite || people);
     const scroller = $("scroller");
-    if (scroller) scroller.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+    if (scroller) scroller.setAttribute("aria-hidden", boards || invite || people ? "true" : "false");
     const tools = $("chrome-tools");
-    if (tools) tools.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+    if (tools) tools.setAttribute("aria-hidden", boards || invite || people ? "true" : "false");
     if (api && api.showEmpty) api.showEmpty();
     if (boards) renderBoardList();
     if (invite) renderGrants(inviteId || currentBoard().id);
+    if (people) renderPeople();
   }
 
   function openBoard(b) {
@@ -184,6 +251,15 @@
     const h = (location.hash || "#/").slice(1);
     if (h === "/boards") {
       showView("boards");
+      return;
+    }
+    if (h === "/people" || h === "/admin" || h === "/users") {
+      const access = global.DataBasedAccess;
+      if (!access || !access.isSystem()) {
+        showView("boards");
+        return;
+      }
+      showView("people");
       return;
     }
     const inv = h.match(/^\/invite(?:\/([^/]+))?$/);
@@ -272,6 +348,64 @@
         saveNow();
         renderGrants(b.id);
         announceGrant(who ? "Removed " + who : "Access removed");
+      });
+    }
+
+    const groups = $("boards-by-user");
+    if (groups) {
+      groups.addEventListener("click", (ev) => {
+        const open = ev.target.closest("[data-open]");
+        if (!open) return;
+        ev.preventDefault();
+        openBoard(store.boards.find((x) => x.id === open.dataset.open));
+        location.hash = "#/";
+      });
+    }
+
+    const appInvite = $("app-invite-form");
+    if (appInvite) {
+      appInvite.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const access = global.DataBasedAccess;
+        const err = $("app-invite-err");
+        const live = $("app-invite-live");
+        if (err) err.hidden = true;
+        if (!access || !access.isSystem()) {
+          if (err) {
+            err.hidden = false;
+            err.textContent = "Only the system user can invite people into the product.";
+          }
+          return;
+        }
+        const email = new FormData(ev.target).get("email").toString().trim().toLowerCase();
+        access.inviteApp(email).then((out) => {
+          if (!out.ok) {
+            if (err) {
+              err.hidden = false;
+              err.textContent = (out.data && out.data.error) || "Invite failed.";
+            }
+            return;
+          }
+          ev.target.reset();
+          if (live) live.textContent = "Granted app access to " + email;
+          renderPeople();
+        });
+      });
+    }
+
+    const users = $("user-list");
+    if (users) {
+      users.addEventListener("click", (ev) => {
+        const access = global.DataBasedAccess;
+        if (!access) return;
+        const revoke = ev.target.closest("[data-app-revoke]");
+        const invite = ev.target.closest("[data-app-invite]");
+        if (revoke) {
+          access.revokeApp(revoke.dataset.appRevoke).then(() => renderPeople());
+        }
+        if (invite) {
+          access.inviteApp(invite.dataset.appInvite).then(() => renderPeople());
+        }
       });
     }
 
