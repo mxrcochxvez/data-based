@@ -1059,6 +1059,8 @@ textarea {
   margin: 0 0 4px;
 }
 .gate-screen { z-index: calc(var(--z-page) + 2); }
+#google-signin { margin: 8px 0 16px; }
+#denied-sign-out { margin-top: 16px; }
 body.is-gated .board,
 body.is-gated .tools,
 body.is-gated .hint,

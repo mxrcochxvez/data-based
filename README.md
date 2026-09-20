@@ -14,40 +14,58 @@ node web/sync-server.mjs
 
 Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Default port is `8765` (`PORT` overrides).
 
-### Access control
+### Access control (Clerk + Google)
 
-The system operator is **not** a hardcoded `ghost` user. Set one of:
+Sign-in is **Clerk**, **Sign in with Google** only. There is no public self-signup and no homemade password table.
 
-- `SYSTEM_USER_EMAIL` (preferred)
-- `DATABSED_SYSTEM_EMAIL` (alias)
+**Env (names only — never commit values)**
 
-Example: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
+| Name | Where | Role |
+| --- | --- | --- |
+| `CLERK_PUBLISHABLE_KEY` | Client via `GET /api/config` | Clerk JS. Also accepted: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` |
+| `CLERK_SECRET_KEY` | Server only | Verify session JWTs; create Clerk invitations |
+| `SYSTEM_USER_EMAIL` | Server | Clerk email of the operator. Alias: `DATABSED_SYSTEM_EMAIL` |
 
-That email is the only person who can **invite people into the product** (grant app access) or **revoke app access**. Everyone else is a normal user.
+Example operator: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
 
-**App invite vs board invite**
+After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>`. The server verifies it and uses the **JWT email** for ACL. It does not trust a client-supplied email header when Clerk is configured.
+
+**Clerk dashboard checklist**
+
+1. Create (or reuse) a Clerk application.
+2. **Social connections → Google**: enable. Add your Google OAuth client ID/secret in Clerk (not in this repo).
+3. **Restrictions**: turn **Allow new users to sign up** off, or set the app to **Restricted** and use **Invitations** so only invited emails can join.
+4. Disable email/password if you want Google-only.
+5. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL.
+6. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_…` from an old Next experiment). Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only.
+7. Invite `SYSTEM_USER_EMAIL` in Clerk (Users → Invitations) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
+8. Redeploy after adding env vars.
+
+**How Google invite-only meets our ACL**
+
+- Clerk invitations (dashboard or **Invite to app**) are what let someone complete Google sign-in.
+- Our store still gates the product: even a signed-in Clerk user without app grant sees the full-page no-access screen (`marcode.chavez.jr@gmail.com`).
+- **Invite to app** (`#/people`, system only): grants app access **and** calls Clerk `invitations.createInvitation`.
+- **Invite to this board** (`#/invite/:id`, any peer on the board): email on the board only. No Clerk account. They still cannot use the app until the system user grants app access and they sign in with Google.
 
 | Action | Who | Effect |
 | --- | --- | --- |
-| Invite to app (`#/people`) | System user only | Creates/restores a granted account. Required to open the product. |
-| Invite to this board (`#/invite/:id`) | Anyone who can open that board | Adds an email to the board grant list. Does **not** grant app access. |
-
-If a peer board-invites an email that has no app access, that person still gets the full-page no-access screen until the system user grants app access. Revoked users see the same screen and are asked to reach out to the operator (the system email, or `marcode.chavez.jr@gmail.com` if unset).
+| Invite to app | System user only | ACL grant + Clerk invitation |
+| Invite to this board | Anyone who can open that board | Board grant list only |
+| Revoke app access | System user only | Signed-in users get the no-access screen |
 
 **What each role sees**
 
 - **Normal user:** only boards they own or were invited to. No global user directory (`GET /api/access/users` and `/api/access/boards` are 403). MCP keys are per-user and see only those boards.
 - **System user:** all users (emails), revoke app access, browse everyone’s boards grouped by user, open any board. Their MCP key sees all boards. `GET /api/sync` returns the full store.
 
-The server store (local `web/data/store.json` or Vercel KV/Blob) is the source of truth. `GET /api/sync` is filtered for the authenticated email (`X-DataBased-User`). A normal user’s `PUT` cannot delete or overwrite boards they cannot access. Do not trust the client’s board list.
-
-Local without `SYSTEM_USER_EMAIL` stays open (fs backend) so you can work offline. On Vercel, ACL is on even if the env is missing — nobody is system, so nobody can grant app access until you set it and redeploy. Identity is the email header (or Clerk email if Clerk is on the page). This is invite-only behind your deployment, not a public IdP.
+The server store is the source of truth. A normal user’s `PUT` cannot overwrite boards they cannot access.
 
 Do not commit `.env.local` or tokens. See `.env.example`.
 
 While signed in, the client PUTs the full `databased.v1` blob to `/api/sync` every 20s, and again on `visibilitychange` (hidden) and `beforeunload`. On load it GETs `/api/sync` and takes the server copy only if `updatedAt` is newer. Last-write-wins: a newer local draft is not replaced. Concurrent edits can drop the older write.
 
-Auth gate (`web/js/sync.js`): if Clerk is on the page, require `Clerk.user` / `Clerk.session`. Else a `databased.token` or `DB.authToken` counts. Else the local email in `databased.user` counts when the server says you have app access. Set `localStorage.databased.user` to `signed-out` (or `DB.user = null`) for local-only; no network, no console errors.
+Auth gate (`web/js/sync.js`): require a Clerk session (Google). Sync/MCP key APIs send that session JWT. MCP tool calls still use the per-user `dbk_` key.
 
 ## MCP (Cursor / Claude)
 
@@ -129,11 +147,14 @@ npx vercel env pull .env.local --yes   # after storage is attached
 npx vercel --prod
 ```
 
-Or connect the GitHub repo in the Vercel dashboard (root directory = repo root, framework = Other). `vercel.json` copies browser assets from `web/` into `.vercel-public` (server `.mjs` files are not published) and maps:
+**Production deploys via Vercel ↔ GitHub** (dashboard Git connection on push to `main`). That is the only automated path. A second GitHub Actions workflow was redundant and is not used — you do not need `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` as Actions secrets.
+
+Connect the GitHub repo in the Vercel dashboard (root directory = repo root, framework = Other). `vercel.json` copies browser assets from `web/` into `.vercel-public` (server `.mjs` files are not published) and maps:
 
 | Browser path | Function |
 | --- | --- |
 | `/api/sync` | `api/sync.mjs` |
+| `/api/config` | `api/config.mjs` (Clerk publishable key only) |
 | `/mcp`, `/sse`, `/mcp/*`, `/api/mcp/*` | `api/mcp.mjs` |
 
 ### Persistence (required on Vercel)
@@ -151,7 +172,11 @@ Vercel has **no durable local disk**. Local `node web/sync-server.mjs` still wri
 
 Optional `STORE_BACKEND=kv|blob|fs`. `fs` is for local only.
 
-Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`) on the Vercel project so production has an operator. Redeploy after adding env vars (they are applied at deploy time). See `.env.example`.
+Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`), `CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` on the Vercel project. Redeploy after adding env vars. See `.env.example`. Never commit secret values.
+
+### Open Graph / share image
+
+`web/index.html` sets `og:image` to `/og.png` (`web/og.png`, 1200×630 wordmark on the cool-gray board). Path-relative URLs work on a Vercel deploy. Some crawlers need an absolute URL: set `PUBLIC_ORIGIN` to the production origin (no trailing slash), e.g. `https://your-deployment.vercel.app`. Do not invent a live domain. The static prepare step (`scripts/prepare-vercel-static.mjs`) prefixes `og:url` and `og:image` when that env is present at build.
 
 MCP keys and ingest snapshots use the same backend (`mcp-keys` / `ingests` keys), not a gitignored file on the serverless filesystem.
 
@@ -160,13 +185,6 @@ MCP keys and ingest snapshots use the same backend (`mcp-keys` / `ingests` keys)
 Point Cursor at `https://<your-deployment>/mcp` with `Authorization: Bearer dbk_...`.
 
 Transport is **streamable HTTP**: **POST** JSON-RPC. **GET** `/mcp` returns immediately (`{"transport":"streamable-http"}`). If `Accept: text/event-stream`, GET writes one `endpoint` event and **closes** the stream. Vercel functions cannot hold a classic long-lived SSE GET.
-
-### GitHub Actions
-
-Workflow: `.github/workflows/vercel.yml` (push to `main`). Secrets:
-
-- `VERCEL_TOKEN` — [account tokens](https://vercel.com/account/tokens)
-- `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` — from `.vercel/project.json` after `npx vercel link`
 
 Do not commit `.env.local` or token files.
 
@@ -197,8 +215,9 @@ Abandoned. `main.bend` / `view.bend` / `tick.bend` still typecheck as a Bend `Ap
 ## Files
 
 - `web/index.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the product
+- `web/og.png`, `web/favicon.svg`, `web/favicon.png`, `web/apple-touch-icon.png`: share image and icons
 - `web/js/persist.js`, `web/js/sync.js`, `web/js/access.js`, `web/sync-server.mjs`: localStorage blob + authed `/api/sync` + app-access ACL
-- `api/sync.mjs`, `api/mcp.mjs`, `api/access.mjs`, `vercel.json`: Vercel static + serverless
+- `api/sync.mjs`, `api/mcp.mjs`, `api/access.mjs`, `api/config.mjs`, `vercel.json`: Vercel static + serverless
 - `web/mcp-server.mjs`, `web/mcp/`, `web/js/mcp-keys.js`: per-user MCP keys + HTTP/stdio tools
 - `board.bend`: `Stamp`, `Body`, `Board`, `Cmd`, `Board.apply`
 - `LAWS.bend`, `PROOF.bend`: `add_zero`, `stamp_eq_refl`, `empty_elems_len`
@@ -207,6 +226,6 @@ Abandoned. `main.bend` / `view.bend` / `tick.bend` still typecheck as a Bend `Ap
 
 ## Stubs
 
-- Auth: system operator is `SYSTEM_USER_EMAIL` / `DATABSED_SYSTEM_EMAIL`. The Bend stub is not the allowlist. Enter your email in the who-are-you screen; Clerk email is used if Clerk is on the page.
+- Auth: Clerk + Google. System operator is `SYSTEM_USER_EMAIL`. The Bend stub is not the allowlist.
 - Live presence and AI chat: not in the browser yet. Same TCP/string limits as before
 - Multi-select and snap-to-grid: not shipped

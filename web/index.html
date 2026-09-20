@@ -3,7 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>data-based</title>
+  <title>Data Based — collaborative architecture boards for engineers</title>
+  <meta name="description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta name="theme-color" content="#e6e6e3">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <!-- Absolute og:url / og:image: set PUBLIC_ORIGIN at Vercel build (see README). Unset keeps path-relative URLs — no invented domain. Crawlers that require an absolute URL need the full origin. -->
+  <meta property="og:title" content="Data Based — collaborative architecture boards for engineers">
+  <meta property="og:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/">
+  <meta property="og:image" content="/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="DATA BASED">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Data Based — collaborative architecture boards for engineers">
+  <meta name="twitter:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta name="twitter:image" content="/og.png">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="css/brand.css">
   <link rel="stylesheet" href="css/menu.css">
@@ -54,6 +72,7 @@
       <a class="ghost-link" href="#/people" id="people-link" hidden>People</a>
       <button type="button" class="ghost-link" id="export-open" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export<span class="export-rest"> agent prompt</span></button>
       <span class="who-chip" id="who-label" hidden></span>
+      <button type="button" class="ghost-link" id="sign-out" hidden>Sign out</button>
     </nav>
   </header>
 
@@ -138,7 +157,7 @@
     <div class="sheet">
       <a href="#/" class="back">Back to board</a>
       <h1 id="people-title">People</h1>
-      <p class="lead">Invite into the product (app access). Only the system user can do this. Board invites are on each board. A peer can add an email to a board; that person still cannot open the app until you grant app access.</p>
+      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Board invites are email-only and do not create a Clerk account.</p>
       <form class="create" id="app-invite-form">
         <label class="sr-only" for="app-invite-email">Email</label>
         <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
@@ -155,13 +174,9 @@
 
   <section class="screen gate-screen" id="screen-who" hidden role="main" aria-labelledby="who-title">
     <div class="sheet">
-      <h1 id="who-title">Who are you?</h1>
-      <p class="lead">data-based is invite-only. Enter the email the operator invited. There is no public signup.</p>
-      <form class="create" id="who-form">
-        <label class="sr-only" for="who-email">Email</label>
-        <input type="email" id="who-email" name="email" placeholder="you@example.com" required autocomplete="email">
-        <button type="submit" class="btn">Continue</button>
-      </form>
+      <h1 id="who-title">Sign in</h1>
+      <p class="lead">data-based is invite-only. Sign in with Google using the email you were invited with. There is no public signup.</p>
+      <button type="button" class="btn" id="google-signin">Sign in with Google</button>
       <p class="parse-err" id="who-err" hidden role="alert"></p>
     </div>
   </section>
@@ -170,6 +185,7 @@
     <div class="sheet">
       <h1 id="denied-title">You don’t have access</h1>
       <p class="lead">This product is invite-only. A board invite is not enough. Reach out to <a id="denied-mail" href="mailto:marcode.chavez.jr@gmail.com">marcode.chavez.jr@gmail.com</a> and ask to be granted app access.</p>
+      <button type="button" class="btn ghost" id="denied-sign-out">Sign out</button>
     </div>
   </section>
 
