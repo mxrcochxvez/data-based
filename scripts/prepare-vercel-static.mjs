@@ -29,4 +29,17 @@ function copyFiltered(from, to) {
 
 fs.rmSync(DEST, { recursive: true, force: true });
 copyFiltered(SRC, DEST);
-console.log("vercel static → " + DEST);
+
+const origin = String(process.env.PUBLIC_ORIGIN || "").replace(/\/+$/, "");
+if (origin) {
+  const htmlPath = path.join(DEST, "index.html");
+  let html = fs.readFileSync(htmlPath, "utf8");
+  html = html.replace(
+    /(<meta property="og:url" content=")\/(")/,
+    `$1${origin}/$2`
+  );
+  html = html.replaceAll('content="/og.png"', `content="${origin}/og.png"`);
+  fs.writeFileSync(htmlPath, html);
+}
+
+console.log("vercel static → " + DEST + (origin ? " · og origin " + origin : " · og paths /og.png"));
