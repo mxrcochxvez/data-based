@@ -7,6 +7,7 @@
   let noteEditId = null;
   let selEdge = null;
   let linkDrag = null;
+  let plusGesture = null;
   let bound = false;
 
   function nextKindFor(kind) {
@@ -50,7 +51,11 @@
       seen.add(key);
       out.push({ from, to });
     }
-    (board && board.edges ? board.edges : []).forEach((e) => add(e.from, e.to));
+    (board && Array.isArray(board.edges) ? board.edges : []).forEach((e) => add(e.from, e.to));
+    const canon = board && Array.isArray(board.edges);
+    if (canon && (board.edges.length || (host && host.state && host.state._edgeBoard === board.id))) {
+      return out;
+    }
     (list || []).forEach((c) => {
       if (c.next != null) add(c.id, c.next);
       (c.links || []).forEach((to) => add(c.id, to));
@@ -113,13 +118,15 @@
   }
 
   function unlink(from, to) {
-    if (!host || !host.state) return;
+    if (!host || !host.state) return false;
+    const before = edges().length;
     host.state.edges = edges().filter((e) => edgeKey(e.from, e.to) !== edgeKey(from, to));
     if (selEdge && edgeKey(selEdge.from, selEdge.to) === edgeKey(from, to)) selEdge = null;
     writeLinks(cards(), host.state.edges);
     flushToBoard();
     drawWires();
     if (host.persist) host.persist();
+    return edges().length !== before;
   }
 
   function pinEmpty(el) {
@@ -284,7 +291,7 @@
       ${editing
         ? `<textarea class="note-text" data-note="${card.id}" placeholder="Write a note">${esc(text)}</textarea>`
         : `<div class="note-view${text ? "" : " is-empty"}" data-note-view="${card.id}">${text ? esc(text) : "Double-click to write"}</div>`}
-      <span class="handle se" data-handle="se"></span>
+      <span class="handle se" data-handle="se" aria-hidden="true"></span>
       ${portHtml(card)}
     `;
     if (editing) {
@@ -401,28 +408,37 @@
       .card .flow-port,
       .card .handle { z-index: 1; }
       .wires, .wires.flow-wires { z-index: 0; pointer-events: none; }
-      .wires.flow-wires .wire-hit { pointer-events: stroke; fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; }
+      .wires.flow-wires .wire-hit { pointer-events: stroke; fill: none; stroke: transparent; stroke-width: 18; cursor: pointer; }
       .wires.flow-wires .wire-kill { pointer-events: auto; cursor: pointer; }
       .wire { fill: none; stroke: #111; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; }
       .wire.is-sel { stroke: #0d99ff; stroke-width: 2; }
-      .wire.is-draft { stroke: #111; stroke-dasharray: 5 4; opacity: 0.7; }
+      .wire.is-draft { stroke: #111; stroke-dasharray: 5 4; opacity: 0.7; pointer-events: none; }
       .flow-port {
         position: absolute;
-        width: 12px;
-        height: 12px;
+        width: 16px;
+        height: 16px;
         padding: 0;
         border: 1.5px solid #111;
         background: #fff;
         border-radius: 50%;
-        z-index: 1;
+        z-index: 2;
         cursor: crosshair;
+        pointer-events: auto;
       }
-      .flow-port.out { right: -7px; top: 50%; transform: translateY(-50%); }
-      .flow-port.in { left: -7px; top: 50%; transform: translateY(-50%); }
+      .flow-port::after {
+        content: "";
+        position: absolute;
+        inset: -10px;
+      }
+      .flow-port.out { right: -9px; top: 50%; transform: translateY(-50%); }
+      .flow-port.in { left: -9px; top: 50%; transform: translateY(-50%); }
+      .card:hover .flow-port, .card.is-sel .flow-port {
+        box-shadow: 0 0 0 2px #fff;
+      }
       .flow-port:hover, .flow-port.is-hot { background: #111; }
       .flow-port:focus-visible { outline: 2px solid #0d99ff; outline-offset: 2px; }
       .card.is-link-target { box-shadow: 0 0 0 2px #0d99ff; }
-      .card .card-next { top: calc(50% - 26px); }
+      .card .card-next { top: calc(50% - 28px); }
     `;
     document.head.appendChild(s);
   }
@@ -449,11 +465,22 @@
     linkDrag = { from: from.id, x1: from.x + from.w + 8, y1: from.y + from.h / 2, x2: pt.x, y2: pt.y };
     selEdge = null;
     drawWires();
-    try { (host.canvas || document).setPointerCapture(ev.pointerId); } catch (_) {}
+    try { ev.target.setPointerCapture(ev.pointerId); } catch (_) {
+      try { (host.canvas || document).setPointerCapture(ev.pointerId); } catch (__) {}
+    }
   }
 
   function moveLink(ev) {
+    if (plusGesture && !linkDrag) {
+      const dx = ev.clientX - plusGesture.x;
+      const dy = ev.clientY - plusGesture.y;
+      if (Math.hypot(dx, dy) >= 6) {
+        plusGesture.dragged = true;
+        startLink(plusGesture.id, ev);
+      }
+    }
     if (!linkDrag) return;
+    ev.preventDefault();
     const pt = canvasPt(ev);
     linkDrag.x2 = pt.x;
     linkDrag.y2 = pt.y;
@@ -467,6 +494,13 @@
   }
 
   function endLink(ev) {
+    if (plusGesture && !plusGesture.dragged && !linkDrag) {
+      const card = cardById(plusGesture.id);
+      plusGesture = null;
+      if (card) addLayer(card, host);
+      return;
+    }
+    plusGesture = null;
     if (!linkDrag) return;
     const from = linkDrag.from;
     const over = ev ? cardAtPoint(ev) : null;
@@ -486,8 +520,6 @@
       if (next) {
         ev.preventDefault();
         ev.stopPropagation();
-        const card = cardById(next.dataset.next);
-        if (card) addLayer(card, api);
         return;
       }
       const kill = ev.target.closest(".wire-kill");
@@ -502,8 +534,8 @@
       if (hit && (hit.classList.contains("wire-hit") || hit.classList.contains("wire"))) {
         ev.preventDefault();
         ev.stopPropagation();
-        selEdge = edges()[Number(hit.dataset.edge)] || null;
-        drawWires();
+        const edge = edges()[Number(hit.dataset.edge)];
+        if (edge) unlink(edge.from, edge.to);
       }
     }, true);
 
@@ -511,20 +543,29 @@
       const node = ev.target.closest(".card");
       if (node) bringToFront(cardById(node.dataset.id));
       const port = ev.target.closest(".flow-port");
-      if (!port) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (port.dataset.port === "out") startLink(port.dataset.id, ev);
+      if (port) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        startLink(port.dataset.id, ev);
+        return;
+      }
+      const plus = ev.target.closest("[data-next]");
+      if (plus) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        plusGesture = { id: plus.dataset.next, x: ev.clientX, y: ev.clientY, dragged: false };
+        try { plus.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
     }, true);
 
-    canvas.addEventListener("pointermove", moveLink);
-    canvas.addEventListener("pointerup", (ev) => {
-      if (linkDrag) {
+    window.addEventListener("pointermove", moveLink);
+    window.addEventListener("pointerup", (ev) => {
+      if (plusGesture || linkDrag) {
         ev.stopPropagation();
         endLink(ev);
       }
-    });
-    canvas.addEventListener("pointercancel", () => endLink());
+    }, true);
+    window.addEventListener("pointercancel", () => endLink());
 
     canvas.addEventListener("dblclick", (ev) => {
       const node = ev.target.closest(".card.note");
