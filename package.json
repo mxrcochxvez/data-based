@@ -11,6 +11,7 @@
     "prepare:vercel": "node scripts/prepare-vercel-static.mjs"
   },
   "dependencies": {
+    "@clerk/backend": "^3.18.1",
     "@upstash/redis": "^1.35.1",
     "@vercel/blob": "^1.1.1"
   }
