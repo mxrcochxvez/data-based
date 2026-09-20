@@ -21,39 +21,16 @@
         );
       }
     } catch (_) {}
-
-    try {
-      const token = (global.DB && global.DB.authToken) || localStorage.getItem(TOKEN_KEY);
-      if (token) return true;
-    } catch (_) {}
-
-    try {
-      if (global.DB && Object.prototype.hasOwnProperty.call(global.DB, "user") && global.DB.user == null) {
-        return false;
-      }
-      const flag = localStorage.getItem(USER_KEY);
-      if (flag === "" || flag === "signed-out" || flag === "0") return false;
-      if (flag) return true;
-    } catch (_) {}
-
-    // Stub: the local “signed in as you” invite chrome counts as authed.
-    return true;
+    const access = global.DataBasedAccess;
+    if (access && access.session && access.session.clerk) return false;
+    return Boolean(access && access.hasAppAccess && access.hasAppAccess());
   }
 
   function authHeaders() {
     if (global.DataBasedAccess && typeof global.DataBasedAccess.headers === "function") {
-      return global.DataBasedAccess.headers();
+      return Promise.resolve(global.DataBasedAccess.headers());
     }
-    const headers = { "Content-Type": "application/json" };
-    try {
-      const token = (global.DB && global.DB.authToken) || localStorage.getItem(TOKEN_KEY);
-      if (token) headers.Authorization = "Bearer " + token;
-    } catch (_) {}
-    try {
-      const user = (global.DB && global.DB.user) || localStorage.getItem(USER_KEY);
-      if (user && user !== "signed-out") headers["X-DataBased-User"] = user;
-    } catch (_) {}
-    return headers;
+    return Promise.resolve({ "Content-Type": "application/json" });
   }
 
   function parse(raw) {
@@ -198,23 +175,23 @@
     if (reason !== "unload" && body === lastPayload) return Promise.resolve(true);
 
     if (reason === "unload") {
-      return fetch(ENDPOINT, {
+      return authHeaders().then((headers) => fetch(ENDPOINT, {
         method: "PUT",
-        headers: authHeaders(),
+        headers,
         body,
         keepalive: true,
-      }).then((res) => {
+      })).then((res) => {
         if (res && res.ok) lastPayload = body;
         return Boolean(res && res.ok);
       }).catch(() => false);
     }
 
-    return quietFetch(ENDPOINT, {
+    return authHeaders().then((headers) => quietFetch(ENDPOINT, {
       method: "PUT",
-      headers: authHeaders(),
+      headers,
       body,
       keepalive: reason === "hide" || reason === "unload",
-    }).then((res) => {
+    })).then((res) => {
       if (res) lastPayload = body;
       return Boolean(res);
     });
@@ -222,7 +199,7 @@
 
   function pull() {
     if (!isAuthed()) return Promise.resolve(false);
-    return quietFetch(ENDPOINT, { headers: authHeaders() }).then((res) => {
+    return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers })).then((res) => {
       if (!res) return false;
       return res.json().then((remote) => {
         if (!remote || !Array.isArray(remote.boards)) return false;

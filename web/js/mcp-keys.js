@@ -22,12 +22,9 @@
 
   function headers() {
     if (global.DataBasedAccess && typeof global.DataBasedAccess.headers === "function") {
-      return global.DataBasedAccess.headers();
+      return Promise.resolve(global.DataBasedAccess.headers());
     }
-    return {
-      "Content-Type": "application/json",
-      "X-DataBased-User": currentHandle(),
-    };
+    return Promise.resolve({ "Content-Type": "application/json" });
   }
 
   function copyText(text) {
@@ -77,7 +74,7 @@
   }
 
   function load() {
-    return fetch("/api/mcp/key", { headers: headers() })
+    return headers().then((h) => fetch("/api/mcp/key", { headers: h }))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
@@ -87,7 +84,7 @@
   }
 
   function create() {
-    return fetch("/api/mcp/key", { method: "POST", headers: headers() })
+    return headers().then((h) => fetch("/api/mcp/key", { method: "POST", headers: h }))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
@@ -102,7 +99,7 @@
   }
 
   function reset() {
-    return fetch("/api/mcp/key/reset", { method: "POST", headers: headers() })
+    return headers().then((h) => fetch("/api/mcp/key/reset", { method: "POST", headers: h }))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data || !data.key) return;
