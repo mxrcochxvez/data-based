@@ -1,0 +1,14 @@
+.DS_Store
+*.o
+*.gpu
+dist/
+/hello
+/main
+/ghost
+/data-based
+/PROOF
+decisions.tsv
+*.c
+*.js
+!web/*.js
+!*.bend
