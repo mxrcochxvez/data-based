@@ -15,6 +15,7 @@ import {
   readAccess,
   systemEmail,
 } from "./mcp/access.mjs";
+import { clerkClientConfig, clerkConfigured } from "./mcp/clerk.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(ROOT, "data");
@@ -65,11 +66,18 @@ function readBody(req) {
 }
 
 async function requireAppUser(req, res) {
-  const handle = identityFromReq(req);
+  const handle = await identityFromReq(req);
   if (!handle) {
-    if (!aclEnforced()) return "you";
-    send(res, 401, { error: "who", contactEmail: contactEmail(), hint: "Send X-DataBased-User with your email." });
-    return null;
+    if (clerkConfigured() || aclEnforced()) {
+      send(res, 401, {
+        error: "who",
+        contactEmail: contactEmail(),
+        clerk: clerkConfigured(),
+        hint: clerkConfigured() ? "Sign in with Google and send the Clerk session JWT." : "Sign in required.",
+      });
+      return null;
+    }
+    return "you";
   }
   const access = await readAccess(DATA_DIR);
   if (!hasAppAccess(access, handle)) {
@@ -162,6 +170,22 @@ const server = http.createServer((req, res) => {
     handleMcpRequest(req, res).catch((e) => {
       const status = e instanceof StoreConfigError ? e.status : 500;
       send(res, status, { error: e && e.message ? e.message : "mcp failed" });
+    });
+    return;
+  }
+  if (url === "/api/config") {
+    if (req.method === "OPTIONS") {
+      send(res, 204, "");
+      return;
+    }
+    if (req.method !== "GET") {
+      send(res, 405, { error: "method not allowed" });
+      return;
+    }
+    send(res, 200, {
+      ...clerkClientConfig(),
+      contactEmail: contactEmail(),
+      systemEnv: Boolean(systemEmail()),
     });
     return;
   }

@@ -3,7 +3,7 @@ import Base
 type User is Data:
   User{name: String}
 
-# Production allowlist is SYSTEM_USER_EMAIL / DATABSED_SYSTEM_EMAIL in the web server,
+# Production identity is Clerk (Google) + SYSTEM_USER_EMAIL on the web server,
 # not this Bend stub.
 def Auth.system() -> User:
   User{"system"}

@@ -1,5 +1,6 @@
 import { getJson, persistMode, setJson } from "./backend.mjs";
 import crypto from "node:crypto";
+import { clerkConfigured, emailFromClerkRequest, inviteClerkEmail } from "./clerk.mjs";
 
 export const CONTACT_FALLBACK = "marcode.chavez.jr@gmail.com";
 
@@ -68,7 +69,10 @@ export function hasAppAccess(doc, handle) {
   return Boolean(row && row.status === "granted");
 }
 
-export function identityFromReq(req) {
+export async function identityFromReq(req) {
+  const fromClerk = await emailFromClerkRequest(req);
+  if (fromClerk) return fromClerk;
+  if (clerkConfigured()) return "";
   const header = req && (req.headers["x-databased-user"] || req.headers["x-databased-email"]);
   const fromHeader = normalizeEmail(header);
   if (fromHeader && fromHeader !== "signed-out" && fromHeader !== "0" && fromHeader !== "you") {
@@ -89,6 +93,7 @@ export function sessionPayload(doc, handle) {
     status: system ? "granted" : (row && row.status) || (aclEnforced() ? "none" : "open"),
     contactEmail: contactEmail(),
     acl: aclEnforced(),
+    clerk: clerkConfigured(),
     systemEnv: Boolean(systemEmail()),
   };
 }
@@ -166,7 +171,7 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
 
   const url = new URL(req.url || "/", "http://127.0.0.1");
   const path = accessPath(req);
-  const handle = identityFromReq(req);
+  const handle = await identityFromReq(req);
   const doc = await readAccess(dataDir);
 
   const isMe = path === "/api/access" || path === "/api/access/" || path === "/api/access/me";
@@ -186,7 +191,12 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   }
 
   if (!handle) {
-    send(res, 401, { error: "who", contactEmail: contactEmail(), hint: "Send X-DataBased-User with your email." });
+    send(res, 401, {
+      error: "who",
+      contactEmail: contactEmail(),
+      clerk: clerkConfigured(),
+      hint: clerkConfigured() ? "Sign in with Google (Clerk session JWT)." : "Send a Clerk Bearer token.",
+    });
     return;
   }
 
@@ -233,7 +243,8 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   try {
     if (isInvite) {
       const user = await grantAppAccess(dataDir, email, handle);
-      send(res, 200, { user, op: "invite" });
+      const clerk = await inviteClerkEmail(email);
+      send(res, 200, { user, op: "invite", clerkInvited: Boolean(clerk.invited) });
       return;
     }
     const user = await revokeAppAccess(dataDir, email);

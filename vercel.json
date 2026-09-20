@@ -22,6 +22,10 @@
     "api/access.mjs": {
       "maxDuration": 30,
       "includeFiles": "web/**"
+    },
+    "api/config.mjs": {
+      "maxDuration": 10,
+      "includeFiles": "web/**"
     }
   }
 }

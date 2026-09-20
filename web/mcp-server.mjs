@@ -9,6 +9,7 @@ import { handleJsonRpc, parseRpcBody } from "./mcp/protocol.mjs";
 import { boardPng } from "./mcp/render.mjs";
 import { persistHint, StoreConfigError } from "./mcp/backend.mjs";
 import { aclEnforced, contactEmail, hasAppAccess, identityFromReq, isSystemHandle, readAccess } from "./mcp/access.mjs";
+import { clerkConfigured } from "./mcp/clerk.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(ROOT, "data");
@@ -45,9 +46,10 @@ function readBody(req) {
   });
 }
 
-function stubHandle(req) {
-  const header = identityFromReq(req);
+async function stubHandle(req) {
+  const header = await identityFromReq(req);
   if (header) return header;
+  if (clerkConfigured()) return "";
   return normalizeHandle(req.headers["x-databased-user"]);
 }
 
@@ -89,9 +91,9 @@ function originFrom(req) {
 }
 
 async function handleKeyApi(req, res, url) {
-  const handle = stubHandle(req);
-  if (aclEnforced() && !handle) {
-    send(res, 401, { error: "who", contactEmail: contactEmail() });
+  const handle = await stubHandle(req);
+  if ((aclEnforced() || clerkConfigured()) && !handle) {
+    send(res, 401, { error: "who", contactEmail: contactEmail(), clerk: clerkConfigured() });
     return;
   }
   if (!(await gateAppUser(handle || "you", res))) return;
