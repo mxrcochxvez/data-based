@@ -9,6 +9,9 @@ colors:
   line: "#d2d2cc"
   sel: "#0d99ff"
   err: "#9b1d1d"
+  prisma: "#0c344b"
+  drizzle: "#c5f74f"
+  graphql: "#e10098"
 typography:
   body:
     fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
@@ -102,6 +105,9 @@ New element types add data and reuse these classes. They do not grow one-off CSS
 
 ### Rail
 `.rail` / `.tools`. Vertical tool island. Do not restyle the brand island from this file. Header wordmark is owned elsewhere.
+
+### Marketplace
+`.market-grid` is a flat app launcher. `.offer` is icon then name. Prisma / Drizzle / GraphQL use vendor color tiles; other kinds stay ink on `--field`. Rail filters dim other tiles (`.offer.is-dim`). Do not bring back list rows or section headings in this panel.
 
 ## Do's and Don'ts
 

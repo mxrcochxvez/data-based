@@ -817,23 +817,32 @@ function setTa(ta, value) {
   paintCode(ta);
 }
 
+function offerMark(kind) {
+  const ink = 'fill="none" stroke="#111" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"';
+  const marks = {
+    note: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M6 4.5h9.5L18.5 8v11.5H6V4.5Zm9.5 0V8H18.5"/></svg></span>`,
+    mind: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M12 4.5 19 9v6l-7 4.5L5 15V9l7-4.5Z"/><path ${ink} d="M12 9v6M9 12h6"/></svg></span>`,
+    schema: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse ${ink} cx="12" cy="7" rx="7" ry="2.4"/><path ${ink} d="M5 7v10c0 1.4 3.1 2.4 7 2.4s7-1 7-2.4V7"/><path ${ink} d="M5 12c0 1.4 3.1 2.4 7 2.4s7-1 7-2.4"/></svg></span>`,
+    drizzle: `<span class="offer-mark is-drizzle" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#111" d="M7.2 5.2c2.1-2.4 5.6-2.6 7.9-.4 1.8 1.7 2.2 4.3 1.2 6.5l-4.1 8.2a2 2 0 0 1-3.6 0L4.5 11.3c-1-2.2-.6-4.8 1.2-6.5  .5-.4 1-.8 1.5-1.1Zm4.8 3.1c.7 0 1.3.6 1.3 1.4v.2c0 .7-.6 1.3-1.3 1.3s-1.3-.6-1.3-1.3v-.2c0-.8.6-1.4 1.3-1.4Zm0 4.6c.7 0 1.3.6 1.3 1.3v.3c0 .7-.6 1.3-1.3 1.3s-1.3-.6-1.3-1.3v-.3c0-.7.6-1.3 1.3-1.3Z"/></svg></span>`,
+    prisma: `<span class="offer-mark is-prisma" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#fff" d="M16.9 2.1 4.6 21.4c-.4.7.2 1.6 1 1.6h7.4c.6 0 1.1-.3 1.3-.9L19.8 3.4c.4-.8-.2-1.7-1.1-1.7h-1.8Z"/></svg></span>`,
+    logic: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M7 5h10v4h-4v10H11V9H7V5Z"/></svg></span>`,
+    ctrl: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M5 8h14v3H5V8Zm0 5h14v3H5v-3Zm0 5h14v3H5v-3Z"/></svg></span>`,
+    repo: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M4.5 8.5h6l1.5 2h7.5v8.5h-15V8.5Zm0 0V7l2.2-2h4.2l1.1 1.5"/></svg></span>`,
+    gql: `<span class="offer-mark is-gql" aria-hidden="true"><svg viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.8 20 8.4v7.2L12 20.2 4 15.6V8.4L12 3.8Z"/><path d="M12 3.8v16.4M4.2 8.5l15.6 7M19.8 8.5l-15.6 7"/></g><circle cx="12" cy="3.8" r="1.45" fill="#fff"/><circle cx="20" cy="8.4" r="1.45" fill="#fff"/><circle cx="20" cy="15.6" r="1.45" fill="#fff"/><circle cx="12" cy="20.2" r="1.45" fill="#fff"/><circle cx="4" cy="15.6" r="1.45" fill="#fff"/><circle cx="4" cy="8.4" r="1.45" fill="#fff"/></svg></span>`,
+  };
+  return marks[kind] || marks.note;
+}
+
 function renderCatalog() {
-  marketBody.innerHTML = CATALOG.map((sec) => `
-    <section class="market-sec" id="sec-${sec.id}">
-      <h3>${esc(sec.heading)}</h3>
-      <ul class="market-list">
-        ${sec.items.map((it) => `
-          <li>
-            <button type="button" class="offer" data-kind="${it.kind}">
-              <span class="offer-name">${esc(it.name)}</span>
-              <span class="offer-blurb">${esc(it.blurb)}</span>
-              <span class="offer-vendor">${esc(it.vendor)}</span>
-            </button>
-          </li>
-        `).join("")}
-      </ul>
-    </section>
-  `).join("");
+  const items = CATALOG.flatMap((sec) => sec.items.map((it) => ({ ...it, sec: sec.id })));
+  marketBody.innerHTML = `<ul class="market-grid" role="list">${items.map((it) => `
+    <li>
+      <button type="button" class="offer" data-kind="${it.kind}" data-sec="${it.sec}" title="${esc(it.blurb)}" aria-label="${esc(it.name)}. ${esc(it.blurb)}">
+        ${offerMark(it.kind)}
+        <span class="offer-name">${esc(it.name)}</span>
+      </button>
+    </li>
+  `).join("")}</ul>`;
 }
 
 function hideTip() {
@@ -855,11 +864,11 @@ function setMarketOpen(on) {
 
 function openMarket(section) {
   setMarketOpen(true);
-  if (section && section !== "market" && section !== "canvas") {
-    const node = document.getElementById(`sec-${section}`);
-    if (node) node.scrollIntoView({ block: "start" });
-  }
-  const first = marketBody.querySelector(".offer");
+  const filter = section && section !== "market" && section !== "canvas" ? section : "";
+  marketBody.querySelectorAll(".offer").forEach((el) => {
+    el.classList.toggle("is-dim", Boolean(filter) && el.dataset.sec !== filter);
+  });
+  const first = marketBody.querySelector(filter ? `.offer[data-sec="${filter}"]` : ".offer");
   if (first) first.focus();
   else if (market) market.focus();
 }
