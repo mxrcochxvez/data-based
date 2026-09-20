@@ -21,32 +21,16 @@
         );
       }
     } catch (_) {}
-
-    try {
-      const token = (global.DB && global.DB.authToken) || localStorage.getItem(TOKEN_KEY);
-      if (token) return true;
-    } catch (_) {}
-
-    try {
-      if (global.DB && Object.prototype.hasOwnProperty.call(global.DB, "user") && global.DB.user == null) {
-        return false;
-      }
-      const flag = localStorage.getItem(USER_KEY);
-      if (flag === "" || flag === "signed-out" || flag === "0") return false;
-      if (flag) return true;
-    } catch (_) {}
-
-    // Stub: the local “signed in as you” invite chrome counts as authed.
-    return true;
+    const access = global.DataBasedAccess;
+    if (access && access.session && access.session.clerk) return false;
+    return Boolean(access && access.hasAppAccess && access.hasAppAccess());
   }
 
   function authHeaders() {
-    const headers = { "Content-Type": "application/json" };
-    try {
-      const token = (global.DB && global.DB.authToken) || localStorage.getItem(TOKEN_KEY);
-      if (token) headers.Authorization = "Bearer " + token;
-    } catch (_) {}
-    return headers;
+    if (global.DataBasedAccess && typeof global.DataBasedAccess.headers === "function") {
+      return Promise.resolve(global.DataBasedAccess.headers());
+    }
+    return Promise.resolve({ "Content-Type": "application/json" });
   }
 
   function parse(raw) {
@@ -129,6 +113,25 @@
   }
 
   function applyRemote(doc) {
+    if (!doc.boards.length) {
+      const id = Math.random().toString(36).slice(2, 10);
+      const who = (global.DataBasedAccess && global.DataBasedAccess.handle && global.DataBasedAccess.handle()) || "you";
+      doc = {
+        boards: [{
+          id,
+          name: "Board",
+          cards: [],
+          edges: [],
+          nextId: 1,
+          placeAt: { x: 88, y: 200 },
+          camera: { pan: { x: 0, y: 0 }, zoom: 1 },
+          grants: [{ id: "owner", handle: who, role: "owner" }],
+          updatedAt: Date.now(),
+        }],
+        currentId: id,
+        updatedAt: Date.now(),
+      };
+    }
     const store = liveStore();
     if (store && Array.isArray(doc.boards)) {
       store.boards.length = 0;
@@ -150,7 +153,18 @@
   }
 
   function quietFetch(url, opts) {
-    return fetch(url, opts).then((res) => (res && res.ok ? res : null)).catch(() => null);
+    return fetch(url, opts).then((res) => {
+      if (res && res.status === 403) {
+        return res.json().then((data) => {
+          const access = global.DataBasedAccess;
+          if (access && typeof access.deniedFromResponse === "function") {
+            access.deniedFromResponse(res, data);
+          }
+          return null;
+        }).catch(() => null);
+      }
+      return res && res.ok ? res : null;
+    }).catch(() => null);
   }
 
   function push(reason) {
@@ -161,21 +175,23 @@
     if (reason !== "unload" && body === lastPayload) return Promise.resolve(true);
 
     if (reason === "unload") {
-      try {
-        if (navigator.sendBeacon) {
-          const ok = navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }));
-          if (ok) lastPayload = body;
-          return Promise.resolve(ok);
-        }
-      } catch (_) {}
+      return authHeaders().then((headers) => fetch(ENDPOINT, {
+        method: "PUT",
+        headers,
+        body,
+        keepalive: true,
+      })).then((res) => {
+        if (res && res.ok) lastPayload = body;
+        return Boolean(res && res.ok);
+      }).catch(() => false);
     }
 
-    return quietFetch(ENDPOINT, {
+    return authHeaders().then((headers) => quietFetch(ENDPOINT, {
       method: "PUT",
-      headers: authHeaders(),
+      headers,
       body,
       keepalive: reason === "hide" || reason === "unload",
-    }).then((res) => {
+    })).then((res) => {
       if (res) lastPayload = body;
       return Boolean(res);
     });
@@ -183,13 +199,15 @@
 
   function pull() {
     if (!isAuthed()) return Promise.resolve(false);
-    return quietFetch(ENDPOINT, { headers: authHeaders() }).then((res) => {
+    return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers })).then((res) => {
       if (!res) return false;
       return res.json().then((remote) => {
-        if (!remote || !Array.isArray(remote.boards) || !remote.boards.length) return false;
+        if (!remote || !Array.isArray(remote.boards)) return false;
         flushLocal();
         const local = readDoc();
-        if (docUpdatedAt(remote) > docUpdatedAt(local)) {
+        const access = global.DataBasedAccess;
+        const serverTruth = access && access.session && access.session.acl;
+        if (serverTruth || docUpdatedAt(remote) > docUpdatedAt(local) || (remote.boards.length && !(local && local.boards && local.boards.length))) {
           applyRemote(remote);
           return true;
         }
@@ -243,7 +261,13 @@
   };
 
   function start() {
-    setTimeout(boot, 0);
+    const access = global.DataBasedAccess;
+    const go = () => setTimeout(boot, 0);
+    if (access && typeof access.ready === "function") {
+      access.ready().then((ok) => { if (ok) go(); });
+    } else {
+      go();
+    }
   }
 
   if (document.readyState === "loading") {

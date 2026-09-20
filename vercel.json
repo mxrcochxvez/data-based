@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "node scripts/prepare-vercel-static.mjs",
+  "outputDirectory": ".vercel-public",
+  "rewrites": [
+    { "source": "/sse", "destination": "/api/mcp?orig=/sse" },
+    { "source": "/mcp", "destination": "/api/mcp?orig=/mcp" },
+    { "source": "/mcp/:path*", "destination": "/api/mcp?orig=/mcp/:path*" },
+    { "source": "/api/mcp/:path*", "destination": "/api/mcp?orig=/api/mcp/:path*" },
+    { "source": "/api/access/:path*", "destination": "/api/access?orig=/api/access/:path*" }
+  ],
+  "functions": {
+    "api/mcp.mjs": {
+      "maxDuration": 60,
+      "includeFiles": "web/**"
+    },
+    "api/sync.mjs": {
+      "maxDuration": 30,
+      "includeFiles": "web/**"
+    },
+    "api/access.mjs": {
+      "maxDuration": 30,
+      "includeFiles": "web/**"
+    },
+    "api/config.mjs": {
+      "maxDuration": 10,
+      "includeFiles": "web/**"
+    }
+  }
+}

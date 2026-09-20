@@ -2,10 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>data-based</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Data Based — collaborative architecture boards for engineers</title>
+  <meta name="description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta name="theme-color" content="#e6e6e3">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <!-- Absolute og:url / og:image: set PUBLIC_ORIGIN at Vercel build (see README). Unset keeps path-relative URLs — no invented domain. Crawlers that require an absolute URL need the full origin. -->
+  <meta property="og:title" content="Data Based — collaborative architecture boards for engineers">
+  <meta property="og:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/">
+  <meta property="og:image" content="/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="DATA BASED">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Data Based — collaborative architecture boards for engineers">
+  <meta name="twitter:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
+  <meta name="twitter:image" content="/og.png">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="css/brand.css">
+  <link rel="stylesheet" href="css/menu.css">
 </head>
 <body>
   <!--
@@ -48,7 +67,12 @@
     <nav class="brand-nav" aria-label="Workspace">
       <a href="#/boards" id="board-name">Board</a>
       <a class="ghost-link" href="#/boards">Boards</a>
-      <a class="invite" href="#/invite" id="invite-link">Invite</a>
+      <a class="invite" href="#/invite" id="invite-link">Invite to board</a>
+      <a class="ghost-link" href="#/invite" id="mcp-link">MCP</a>
+      <a class="ghost-link" href="#/people" id="people-link" hidden>People</a>
+      <button type="button" class="ghost-link" id="export-open" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export<span class="export-rest"> agent prompt</span></button>
+      <span class="who-chip" id="who-label" hidden></span>
+      <button type="button" class="ghost-link" id="sign-out" hidden>Sign out</button>
     </nav>
   </header>
 
@@ -83,7 +107,7 @@
   <section class="screen" id="screen-boards" hidden role="main" aria-labelledby="boards-title">
     <div class="sheet">
       <h1 id="boards-title">Boards</h1>
-      <p class="lead">Each board is its own canvas. Invite is a grant list. There is no public signup.</p>
+      <p class="lead">Each board is its own canvas. Invite to this board is a grant list. App access is granted only by the system user.</p>
       <form class="create" id="new-board">
         <label class="sr-only" for="board-name-input">Board name</label>
         <input type="text" id="board-name-input" name="name" placeholder="Board name" required autocomplete="off">
@@ -96,16 +120,72 @@
   <section class="screen" id="screen-invite" hidden role="main" aria-labelledby="invite-title">
     <div class="sheet">
       <a href="#/" class="back" id="invite-back">Back to board</a>
-      <h1 id="invite-title">Invite</h1>
-      <p class="lead">Grant access by email or handle. People you add appear on this board. You can remove anyone except the owner. No sign-up.</p>
+      <h1 id="invite-title">Invite to this board</h1>
+      <p class="lead">Grant this board to an email. That does not grant product access. If they have no app access, they will see an error until the system user invites them into the product.</p>
       <form class="create" id="grant-form">
-        <label class="sr-only" for="grant-handle">Email or handle</label>
-        <input type="text" id="grant-handle" name="handle" placeholder="email or handle" required autocomplete="off" aria-describedby="grant-err">
-        <button type="submit" class="btn">Grant access</button>
+        <label class="sr-only" for="grant-handle">Email</label>
+        <input type="email" id="grant-handle" name="handle" placeholder="email" required autocomplete="off" aria-describedby="grant-err">
+        <button type="submit" class="btn">Invite to board</button>
       </form>
       <p class="parse-err" id="grant-err" hidden role="alert"></p>
       <p class="sr-only" id="grant-live" aria-live="polite"></p>
       <ul class="grant-list" id="grant-list"></ul>
+
+      <section class="mcp-panel" id="mcp-panel" aria-labelledby="mcp-title">
+        <h2 id="mcp-title">MCP key</h2>
+        <p class="lead" id="mcp-hint">Create a key to hook Cursor or Claude to this board via MCP.</p>
+        <label class="sr-only" for="mcp-secret">MCP key</label>
+        <input id="mcp-secret" class="mcp-secret" type="text" readonly hidden autocomplete="off" spellcheck="false">
+        <div class="mcp-actions">
+          <button type="button" class="btn" id="mcp-create">Create MCP key</button>
+          <button type="button" class="btn" id="mcp-copy" hidden>Copy</button>
+          <button type="button" class="btn ghost" id="mcp-reset" hidden>Reset key</button>
+        </div>
+        <div class="mcp-confirm" id="mcp-confirm" hidden>
+          <p>Reset this key? The old key stops working immediately. The new key is shown once. We do not email it.</p>
+          <div class="mcp-actions">
+            <button type="button" class="btn ghost" id="mcp-reset-no">Cancel</button>
+            <button type="button" class="btn" id="mcp-reset-yes">Reset key</button>
+          </div>
+        </div>
+        <p class="sr-only" id="mcp-live" aria-live="polite"></p>
+      </section>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-people" hidden role="main" aria-labelledby="people-title">
+    <div class="sheet">
+      <a href="#/" class="back">Back to board</a>
+      <h1 id="people-title">People</h1>
+      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Board invites are email-only and do not create a Clerk account.</p>
+      <form class="create" id="app-invite-form">
+        <label class="sr-only" for="app-invite-email">Email</label>
+        <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
+        <button type="submit" class="btn">Invite to app</button>
+      </form>
+      <p class="parse-err" id="app-invite-err" hidden role="alert"></p>
+      <p class="sr-only" id="app-invite-live" aria-live="polite"></p>
+      <h2 class="people-h">All users</h2>
+      <ul class="grant-list" id="user-list"></ul>
+      <h2 class="people-h">Boards by user</h2>
+      <div id="boards-by-user"></div>
+    </div>
+  </section>
+
+  <section class="screen gate-screen" id="screen-who" hidden role="main" aria-labelledby="who-title">
+    <div class="sheet">
+      <h1 id="who-title">Sign in</h1>
+      <p class="lead">data-based is invite-only. Sign in with Google using the email you were invited with. There is no public signup.</p>
+      <button type="button" class="btn" id="google-signin">Sign in with Google</button>
+      <p class="parse-err" id="who-err" hidden role="alert"></p>
+    </div>
+  </section>
+
+  <section class="screen gate-screen" id="screen-denied" hidden role="main" aria-labelledby="denied-title">
+    <div class="sheet">
+      <h1 id="denied-title">You don’t have access</h1>
+      <p class="lead">This product is invite-only. A board invite is not enough. Reach out to <a id="denied-mail" href="mailto:marcode.chavez.jr@gmail.com">marcode.chavez.jr@gmail.com</a> and ask to be granted app access.</p>
+      <button type="button" class="btn ghost" id="denied-sign-out">Sign out</button>
     </div>
   </section>
 
@@ -140,13 +220,38 @@
     <ul class="combo-pop" id="combo-pop" role="listbox" hidden></ul>
   </dialog>
 
+  <dialog class="modal export-modal" id="export" aria-labelledby="export-title">
+    <form method="dialog" class="modal-form" id="export-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="export-title">Export agent prompt</h2>
+          <p id="export-lead">Paste into Cursor, Claude, or Codex outside this app.</p>
+        </div>
+        <p class="sr-only" id="export-live" aria-live="polite"></p>
+      </header>
+      <div class="modal-body">
+        <label class="sr-only" for="export-text">Agent prompt</label>
+        <textarea id="export-text" class="export-text" readonly spellcheck="false"></textarea>
+      </div>
+      <footer class="modal-foot">
+        <button type="submit" class="btn ghost" id="export-close">Close</button>
+        <button type="button" class="btn ghost" id="export-download">Download .md</button>
+        <button type="button" class="btn" id="export-copy">Copy</button>
+      </footer>
+    </form>
+  </dialog>
+
   <script src="js/persist.js"></script>
+  <script src="js/access.js"></script>
   <script src="js/boards.js"></script>
   <script src="highlight.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/select.js"></script>
   <script src="js/flow.js"></script>
   <script src="app.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/mcp-keys.js"></script>
   <script src="js/sync.js"></script>
 </body>
 </html>

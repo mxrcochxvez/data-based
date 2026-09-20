@@ -3,11 +3,13 @@ import Base
 type User is Data:
   User{name: String}
 
+# Production identity is Clerk (Google) + SYSTEM_USER_EMAIL on the web server,
+# not this Bend stub.
 def Auth.system() -> User:
-  User{"ghost"}
+  User{"system"}
 
 def Auth.allowed(+name: String) -> Bool:
-  String.eq(name, "ghost")
+  String.neq(name, "")
 
 def Auth.on_allowed(+name: String, ok: Bool) -> Maybe<User>:
   match ok:
