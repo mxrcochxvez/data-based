@@ -36,7 +36,7 @@
     <a class="invite" href="#/invite" id="invite-link">Invite</a>
   </header>
 
-  <nav class="island tools" id="chrome-tools" aria-label="Tools">
+  <nav class="island rail tools" id="chrome-tools" aria-label="Tools">
     <button type="button" class="tool" id="house" aria-label="Marketplace" title="Marketplace · H">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3l9 8.2V21h-7v-6H10v6H3V11.2Z"/></svg>
     </button>
@@ -100,21 +100,22 @@
     </aside>
   </div>
 
-  <dialog class="edit" id="edit">
-    <form method="dialog" id="edit-form">
-      <header class="edit-head">
+  <dialog class="modal" id="edit">
+    <form method="dialog" class="modal-form" id="edit-form">
+      <header class="modal-head">
         <div>
           <h2 id="edit-title">Edit</h2>
           <p id="edit-kind"></p>
         </div>
         <p class="parse-err" id="parse-err" hidden></p>
       </header>
-      <div class="edit-body" id="edit-body"></div>
-      <footer class="edit-foot">
+      <div class="modal-body" id="edit-body"></div>
+      <footer class="modal-foot">
         <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
         <button type="submit" class="btn">Save</button>
       </footer>
     </form>
+    <ul class="combo-pop" id="combo-pop" hidden></ul>
   </dialog>
 
   <script src="highlight.js"></script>
