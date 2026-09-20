@@ -147,9 +147,9 @@ export function emptyBoard(name, handle) {
 }
 
 export function grantFor(board, handle) {
-  const who = String(handle || "").toLowerCase();
+  const who = normalizeEmail(handle);
   const grants = (board && Array.isArray(board.grants) ? board.grants : []);
-  return grants.find((g) => String(g.handle || "").toLowerCase() === who) || null;
+  return grants.find((g) => normalizeEmail(g.handle) === who) || null;
 }
 
 export function canAccess(board, handle) {

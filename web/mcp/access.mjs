@@ -1,6 +1,11 @@
 import { getJson, persistMode, setJson } from "./backend.mjs";
 import crypto from "node:crypto";
-import { clerkConfigured, emailFromClerkRequest, inviteClerkEmail } from "./clerk.mjs";
+import {
+  clerkClientConfig,
+  clerkConfigured,
+  clerkIdentityFromRequest,
+  inviteClerkEmail,
+} from "./clerk.mjs";
 
 export const CONTACT_FALLBACK = "marcode.chavez.jr@gmail.com";
 
@@ -13,6 +18,40 @@ export function looksLikeEmail(value) {
   return Boolean(e && e.includes("@") && !e.startsWith("@") && !e.endsWith("@"));
 }
 
+export function canonicalEmail(value) {
+  const e = normalizeEmail(value);
+  const at = e.lastIndexOf("@");
+  if (at < 1) return e;
+  let local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    local = local.split("+")[0].replace(/\./g, "");
+    return local + "@gmail.com";
+  }
+  return e;
+}
+
+export function emailsMatch(a, b) {
+  const left = normalizeEmail(a);
+  const right = normalizeEmail(b);
+  if (!left || !right) return false;
+  return left === right || canonicalEmail(left) === canonicalEmail(right);
+}
+
+export function pickIdentityEmail(emails) {
+  const list = (emails || []).map(normalizeEmail).filter(looksLikeEmail);
+  const seen = [];
+  for (const e of list) {
+    if (!seen.includes(e)) seen.push(e);
+  }
+  const sys = systemEmail();
+  if (sys) {
+    const hit = seen.find((e) => emailsMatch(e, sys));
+    if (hit) return hit;
+  }
+  return seen[0] || "";
+}
+
 export function systemEmail() {
   return normalizeEmail(process.env.SYSTEM_USER_EMAIL || process.env.DATABSED_SYSTEM_EMAIL || "");
 }
@@ -21,9 +60,24 @@ export function contactEmail() {
   return systemEmail() || CONTACT_FALLBACK;
 }
 
+export function systemEnvHint() {
+  if (systemEmail()) return "";
+  return "SYSTEM_USER_EMAIL is not set on this server environment. Nobody is the system operator until it is set and the app is redeployed.";
+}
+
 export function isSystemHandle(handle) {
   const sys = systemEmail();
-  return Boolean(sys && normalizeEmail(handle) === sys);
+  return Boolean(sys && emailsMatch(handle, sys));
+}
+
+let ensuredSystem = false;
+
+export async function ensureSystemClerkUser() {
+  if (ensuredSystem) return { skipped: true };
+  const email = systemEmail();
+  if (!email || !clerkConfigured()) return { invited: false, skipped: true };
+  ensuredSystem = true;
+  return inviteClerkEmail(email);
 }
 
 export function aclEnforced() {
@@ -57,7 +111,7 @@ async function writeAccess(dataDir, doc) {
 
 export function findAccessUser(doc, email) {
   const id = normalizeEmail(email);
-  return (doc.users || []).find((u) => normalizeEmail(u.email) === id) || null;
+  return (doc.users || []).find((u) => emailsMatch(u.email, id)) || null;
 }
 
 export function hasAppAccess(doc, handle) {
@@ -69,23 +123,37 @@ export function hasAppAccess(doc, handle) {
   return Boolean(row && row.status === "granted");
 }
 
-export async function identityFromReq(req) {
-  const fromClerk = await emailFromClerkRequest(req);
-  if (fromClerk) return fromClerk;
-  if (clerkConfigured()) return "";
+export async function identityDetailsFromReq(req) {
+  if (clerkConfigured()) {
+    const ident = await clerkIdentityFromRequest(req);
+    const email = pickIdentityEmail(ident.emails);
+    return {
+      email,
+      emails: ident.emails || [],
+      userId: ident.userId || "",
+      error: email ? "" : (ident.error || "no_token"),
+    };
+  }
   const header = req && (req.headers["x-databased-user"] || req.headers["x-databased-email"]);
   const fromHeader = normalizeEmail(header);
   if (fromHeader && fromHeader !== "signed-out" && fromHeader !== "0" && fromHeader !== "you") {
-    return fromHeader;
+    return { email: fromHeader, emails: [fromHeader], userId: "", error: "" };
   }
-  return "";
+  return { email: "", emails: [], userId: "", error: "no_token" };
 }
 
-export function sessionPayload(doc, handle) {
-  const email = normalizeEmail(handle);
+export async function identityFromReq(req) {
+  const ident = await identityDetailsFromReq(req);
+  return ident.email || "";
+}
+
+export function sessionPayload(doc, handle, extra) {
+  const more = extra && typeof extra === "object" ? extra : {};
+  const email = pickIdentityEmail(more.emails && more.emails.length ? more.emails : [handle]);
   const row = findAccessUser(doc, email);
   const system = isSystemHandle(email);
   const granted = hasAppAccess(doc, email);
+  const cfg = clerkClientConfig();
   return {
     email: email || null,
     isSystem: system,
@@ -95,6 +163,13 @@ export function sessionPayload(doc, handle) {
     acl: aclEnforced(),
     clerk: clerkConfigured(),
     systemEnv: Boolean(systemEmail()),
+    systemHint: systemEnvHint(),
+    verified: Boolean(email),
+    identityError: email ? "" : (more.identityError || ""),
+    clerkUserId: more.clerkUserId || "",
+    clerkInstance: cfg.clerkInstance,
+    clerkKeyKind: cfg.clerkKeyKind,
+    clerkEnvLabel: cfg.clerkEnvLabel,
   };
 }
 
@@ -171,8 +246,10 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
 
   const url = new URL(req.url || "/", "http://127.0.0.1");
   const path = accessPath(req);
-  const handle = await identityFromReq(req);
+  const ident = await identityDetailsFromReq(req);
+  const handle = ident.email || "";
   const doc = await readAccess(dataDir);
+  await ensureSystemClerkUser();
 
   const isMe = path === "/api/access" || path === "/api/access/" || path === "/api/access/me";
   const isUsers = path === "/api/access/users" || /\/users$/.test(path) || url.searchParams.get("users") === "1";
@@ -180,13 +257,19 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   const isInvite = path === "/api/access/invite" || /\/invite$/.test(path);
   const isRevoke = path === "/api/access/revoke" || /\/revoke$/.test(path);
 
+  const meExtra = {
+    emails: ident.emails,
+    identityError: ident.error,
+    clerkUserId: ident.userId,
+  };
+
   if (req.method === "GET" && isMe && !isUsers && !isBoards) {
-    send(res, 200, sessionPayload(doc, handle));
+    send(res, 200, sessionPayload(doc, handle, meExtra));
     return;
   }
 
   if (req.method === "GET" && !isUsers && !isBoards && !isInvite && !isRevoke) {
-    send(res, 200, sessionPayload(doc, handle));
+    send(res, 200, sessionPayload(doc, handle, meExtra));
     return;
   }
 
@@ -208,7 +291,7 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   if (req.method === "GET" && isUsers) {
     const users = (doc.users || []).map(publicUser);
     const sys = systemEmail();
-    if (sys && !users.some((u) => u.email === sys)) {
+    if (sys && !users.some((u) => emailsMatch(u.email, sys))) {
       users.unshift({ email: sys, status: "granted", grantedAt: 0, revokedAt: 0, system: true });
     }
     send(res, 200, { users, contactEmail: contactEmail() });
