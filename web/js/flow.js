@@ -244,12 +244,35 @@
     `;
   }
 
+  function stackTop() {
+    let max = 1;
+    for (const c of cards()) {
+      if (typeof c.z === "number" && c.z > max) max = c.z;
+    }
+    return max;
+  }
+
+  function applyStack(el, card) {
+    if (!el || !card) return;
+    if (card.z == null) card.z = 1;
+    el.style.zIndex = String(card.z);
+  }
+
+  function bringToFront(card) {
+    if (!card) return card;
+    card.z = stackTop() + 1;
+    const el = host && host.canvas && host.canvas.querySelector(`.card[data-id="${card.id}"]`);
+    applyStack(el, card);
+    return card;
+  }
+
   function decorate(el, card) {
     if (!el || !card) return;
     if (!el.querySelector(".flow-port")) el.insertAdjacentHTML("beforeend", portHtml(card));
     if (nextKindFor(card.kind) && !el.querySelector(".card-next")) {
       el.insertAdjacentHTML("beforeend", nextControl(card));
     }
+    applyStack(el, card);
   }
 
   function fillNote(el, card) {
@@ -315,7 +338,10 @@
       x: from.x + from.w + 72,
       y: from.y + already * 36,
     });
-    if (card) link(from.id, card.id);
+    if (card) {
+      link(from.id, card.id);
+      bringToFront(card);
+    }
     return card;
   }
 
@@ -325,10 +351,12 @@
   }
 
   function canvasPt(ev) {
+    if (root.Camera && typeof root.Camera.toWorld === "function") return root.Camera.toWorld(ev);
     const canvas = host && host.canvas;
     if (!canvas) return { x: ev.clientX, y: ev.clientY };
     const r = canvas.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    const z = (root.Camera && typeof root.Camera.zoom === "function") ? root.Camera.zoom() : 1;
+    return { x: (ev.clientX - r.left) / z, y: (ev.clientY - r.top) / z };
   }
 
   function cardAtPoint(ev) {
@@ -365,7 +393,14 @@
         cursor: text;
       }
       .note-view.is-empty { color: #6b5a1e; }
-      .wires.flow-wires { pointer-events: none; }
+      .card {
+        isolation: isolate;
+        overflow: visible;
+      }
+      .card .card-next,
+      .card .flow-port,
+      .card .handle { z-index: 1; }
+      .wires, .wires.flow-wires { z-index: 0; pointer-events: none; }
       .wires.flow-wires .wire-hit { pointer-events: stroke; fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; }
       .wires.flow-wires .wire-kill { pointer-events: auto; cursor: pointer; }
       .wire { fill: none; stroke: #111; stroke-width: 1.6; stroke-linecap: round; pointer-events: none; }
@@ -379,7 +414,7 @@
         border: 1.5px solid #111;
         background: #fff;
         border-radius: 50%;
-        z-index: 4;
+        z-index: 1;
         cursor: crosshair;
       }
       .flow-port.out { right: -7px; top: 50%; transform: translateY(-50%); }
@@ -473,6 +508,8 @@
     }, true);
 
     canvas.addEventListener("pointerdown", (ev) => {
+      const node = ev.target.closest(".card");
+      if (node) bringToFront(cardById(node.dataset.id));
       const port = ev.target.closest(".flow-port");
       if (!port) return;
       ev.preventDefault();
@@ -547,6 +584,9 @@
     if (origPaint && !origPaint._flowWrapped) {
       api.paintCard = function wrappedPaint(card) {
         const out = origPaint.apply(this, arguments);
+        if (card && api.canvas) {
+          applyStack(api.canvas.querySelector(`.card[data-id="${card.id}"]`), card);
+        }
         drawWires(api.wires, api.state.cards);
         return out;
       };
@@ -595,6 +635,8 @@
     flushToBoard,
     hydrateFromBoard,
     decorate,
+    bringToFront,
+    applyStack,
     boot,
   };
 

@@ -41,7 +41,7 @@ bend PROOF.bend
 - Drag a card to move it. A drag does not open edit. Double-click, Edit, or `E` does
 - Prisma, Drizzle, GraphQL, and SQL each edit in that language. Spreadsheet fields and the highlighted source stay in sync. Types are a combobox: pick or type a custom value
 - Effect cards have Input type, Output type, and Effects in the box
-- Table cards carry a `+` that adds the next layer (repo → effects → controller) and draws an arrow. Notes are not in that chain
+- Table cards carry a `+` that adds a next-kind card and one arrow. The same card can grow many arrows. Drag a port onto another card to share a module. Notes are not in that helper.
 - Note cards: toolstrip sticky, or marketplace. Click into the card to write. Resize from the corner
 - Empty-state copy is a viewport HUD. Panning the dots does not move it
 - `#/boards` creates and switches boards. `#/invite/:id` grants access by email or handle. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the local server.
