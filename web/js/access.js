@@ -47,10 +47,17 @@
     clerk: false,
     ready: false,
     denied: false,
+    systemEnv: false,
+    verified: false,
+    identityError: "",
+    clerkInstance: "",
+    clerkKeyKind: "",
+    clerkEnvLabel: "",
+    clerkUserId: "",
   };
 
-  let readyPromise = null;
   let resolveReady = null;
+  const readyPromise = new Promise((resolve) => { resolveReady = resolve; });
   let clerkPk = "";
   let clerkStatus = "off";
   let clerkFail = "";
@@ -118,15 +125,31 @@
     paintChrome();
   }
 
+  function clerkWhere() {
+    const host = session.clerkInstance || "";
+    const env = session.clerkEnvLabel || (session.clerkKeyKind === "live" ? "Production" : (session.clerkKeyKind === "test" ? "Development" : ""));
+    if (host && env) return env + " instance " + host;
+    if (host) return host;
+    if (env) return env + " instance";
+    return "the Clerk application that matches this site’s publishable key";
+  }
+
   function applyMe(data) {
     if (!data || typeof data !== "object") return session;
-    session.email = data.email || handle() || null;
+    session.email = data.email || null;
     session.isSystem = Boolean(data.isSystem);
     session.hasAppAccess = Boolean(data.hasAppAccess);
     session.contactEmail = data.contactEmail || CONTACT;
     session.acl = Boolean(data.acl);
     session.clerk = Boolean(data.clerk);
     session.status = data.status;
+    session.systemEnv = Boolean(data.systemEnv);
+    session.verified = Boolean(data.verified && data.email);
+    session.identityError = data.identityError || "";
+    session.clerkInstance = data.clerkInstance || session.clerkInstance || "";
+    session.clerkKeyKind = data.clerkKeyKind || session.clerkKeyKind || "";
+    session.clerkEnvLabel = data.clerkEnvLabel || session.clerkEnvLabel || "";
+    session.clerkUserId = data.clerkUserId || "";
     paintChrome();
     return session;
   }
@@ -254,6 +277,9 @@
       session.email = null;
       session.isSystem = false;
       session.hasAppAccess = false;
+      session.verified = false;
+      session.identityError = "";
+      session.clerkUserId = "";
       showWho();
     };
     if (clerk && typeof clerk.signOut === "function") {
@@ -263,8 +289,9 @@
   }
 
   function afterSession() {
-    const who = handle();
-    if (!who) {
+    const clientEmail = handle();
+    const clerkUser = global.Clerk && global.Clerk.user;
+    if (!clerkUser) {
       showWho();
       finish(false);
       return false;
@@ -276,6 +303,31 @@
         return false;
       }
       applyMe(out.data);
+      if (!session.verified) {
+        const uid = (clerkUser && clerkUser.id) || session.clerkUserId || "";
+        const err = session.identityError;
+        let msg = "Google finished in the browser, but this server did not verify a Clerk session for you. That is not the invite gate.";
+        if (err === "verify_failed") {
+          msg = "Clerk signed you in in the browser, but the server could not verify the session JWT. CLERK_SECRET_KEY must belong to the same Clerk application as the publishable key.";
+        } else if (err === "no_email") {
+          msg = "Clerk session verified, but the JWT and user record had no email. Check the Google account’s email on " + clerkWhere() + ".";
+        } else if (err === "no_token") {
+          msg = "No Clerk session JWT reached the server. Refresh and sign in with Google again.";
+        }
+        if (uid) msg += " Look for " + uid + " under Users on " + clerkWhere() + ".";
+        else msg += " If Users is empty, you are on the wrong instance (Development vs Production) or Clerk Restricted blocked creating the user.";
+        if (clientEmail) msg += " Browser email was " + clientEmail + ".";
+        showWho(msg);
+        finish(false);
+        return false;
+      }
+      if (!session.systemEnv && session.isSystem === false && !session.hasAppAccess) {
+        showWho(out.data && out.data.systemHint
+          ? out.data.systemHint
+          : "SYSTEM_USER_EMAIL is not set on this server. Nobody can be the system operator until it is set on this Vercel environment and redeployed.");
+        finish(false);
+        return false;
+      }
       if (!session.hasAppAccess && (session.acl || session.clerk)) {
         showDenied(session.contactEmail);
         finish(false);
@@ -288,27 +340,40 @@
   }
 
   function start() {
-    readyPromise = new Promise((resolve) => { resolveReady = resolve; });
     return fetch("/api/config")
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null)
       .then((cfg) => {
         if (cfg && cfg.contactEmail) session.contactEmail = cfg.contactEmail;
+        if (cfg && cfg.clerkInstance) session.clerkInstance = cfg.clerkInstance;
+        if (cfg && cfg.clerkKeyKind) session.clerkKeyKind = cfg.clerkKeyKind;
+        if (cfg && cfg.clerkEnvLabel) session.clerkEnvLabel = cfg.clerkEnvLabel;
+        if (cfg && cfg.systemEnv === false && cfg.systemHint) session.systemHint = cfg.systemHint;
         if (cfg && cfg.clerk && cfg.publishableKey) {
           session.clerk = true;
           return bootClerk(cfg.publishableKey).then(function (clerk) {
             const href = String(location.href);
             const bounced = /__clerk|clerk_status/i.test(href) && typeof clerk.handleRedirectCallback === "function"
-              ? clerk.handleRedirectCallback().then(function () { return clerk; }).catch(function () { return clerk; })
+              ? clerk.handleRedirectCallback().then(function () { return clerk; }).catch(function (err) {
+                clerkFail = err && err.message ? String(err.message) : "Clerk did not finish Google sign-in.";
+                return clerk;
+              })
               : Promise.resolve(clerk);
             return bounced.then(function (ready) {
               if (ready && ready.addListener) {
                 ready.addListener(function (res) {
-                  if (res && res.user && session.ready && session.denied) afterSession();
+                  if (res && res.user && session.ready && (session.denied || !session.hasAppAccess)) afterSession();
                 });
               }
               if (!ready.user) {
-                showWho();
+                const bouncedGoogle = /__clerk|clerk_status|clerk_error/i.test(href);
+                if (clerkFail) {
+                  showWho(clerkFail + " Users appear in Clerk only after this instance accepts Google. Check " + clerkWhere() + ", Google enabled, allowed origins include this Vercel URL, and Restricted/Invitations if sign-ups are off.");
+                } else if (bouncedGoogle) {
+                  showWho("Google returned here, but Clerk did not create a session. Look at " + clerkWhere() + " → Users and Invitations — not a different application, and not Production if this site uses pk_test_ (Development). Enable Google, add this origin, and if Restricted, invite the system email first.");
+                } else {
+                  showWho();
+                }
                 finish(false);
                 return false;
               }
@@ -385,7 +450,7 @@
     headers,
     isSystem: function () { return session.isSystem; },
     hasAppAccess: function () { return session.hasAppAccess; },
-    ready: function () { return readyPromise || Promise.resolve(true); },
+    ready: function () { return readyPromise; },
     users,
     boards,
     inviteApp,
