@@ -17,6 +17,7 @@
       edges: [],
       nextId: 1,
       placeAt: { x: 88, y: 200 },
+      camera: { pan: { x: 0, y: 0 }, zoom: 1 },
       grants: [{ id: "owner", handle: "you", role: "owner" }],
       updatedAt: Date.now(),
     };
@@ -29,6 +30,9 @@
     b.edges = Array.isArray(b.edges) ? b.edges : [];
     b.nextId = b.nextId || 1;
     b.placeAt = b.placeAt || { x: 88, y: 200 };
+    b.camera = b.camera && typeof b.camera === "object"
+      ? b.camera
+      : { pan: { x: 0, y: 0 }, zoom: 1 };
     b.grants = b.grants && b.grants.length ? b.grants : [{ id: "owner", handle: "you", role: "owner" }];
     return b;
   }
@@ -63,9 +67,14 @@
     if (!b || !api) return;
     const s = api.state;
     b.cards = s.cards;
+    b.edges = Array.isArray(s.edges) ? s.edges : (b.edges || []);
     b.nextId = s.nextId;
     b.placeAt = s.placeAt;
+    if (global.Camera && typeof global.Camera.flush === "function") global.Camera.flush(b);
+    else if (s.camera) b.camera = { pan: { x: s.camera.pan.x, y: s.camera.pan.y }, zoom: s.camera.zoom };
     b.updatedAt = Date.now();
+    const flow = global.DataBasedFlow;
+    if (flow && typeof flow.flushToBoard === "function") flow.flushToBoard(b);
   }
 
   function hydrateBoard(b) {
@@ -73,11 +82,16 @@
     if (!api) return;
     const cards = (b.cards || []).map((c) => api.normalizeCard(c));
     api.state.cards = cards;
+    api.state.edges = Array.isArray(b.edges) ? b.edges.slice() : [];
     api.state.nextId = b.nextId || 1;
     api.state.placeAt = b.placeAt || { x: 88, y: 200 };
+    if (global.Camera && typeof global.Camera.hydrate === "function") global.Camera.hydrate(b);
+    else api.state.camera = b.camera || { pan: { x: 0, y: 0 }, zoom: 1 };
     api.state.sel = new Set();
     if ("sels" in api.state) api.state.sels = api.state.sel;
     api.state.editing = null;
+    const flow = global.DataBasedFlow;
+    if (flow && typeof flow.hydrateFromBoard === "function") flow.hydrateFromBoard(b);
   }
 
   function saveNow() {
@@ -256,8 +270,12 @@
     api = next;
     Persist.read().then((doc) => {
       if (doc && Array.isArray(doc.boards) && doc.boards.length) {
+        const incoming = Number(doc.updatedAt) || 0;
+        const current = Number(store.updatedAt) || 0;
+        if (incoming < current) return;
         store.boards = doc.boards.map(normalizeBoard).filter(Boolean);
         store.currentId = store.boards.some((b) => b.id === doc.currentId) ? doc.currentId : store.boards[0].id;
+        store.updatedAt = incoming || current;
       }
       hydrateBoard(currentBoard());
       renderBoardChrome();
