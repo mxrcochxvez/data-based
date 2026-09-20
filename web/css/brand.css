@@ -1,0 +1,77 @@
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-sans-condensed-latin-500.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-sans-condensed-latin-700.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.wordmark {
+  --brand: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue Condensed", ui-sans-serif, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin: 0 -2px 0 -4px;
+  padding: 0 2px 0 4px;
+  color: var(--ink);
+  border-radius: var(--radius);
+}
+.wordmark-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.wordmark-mark .grid {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.wordmark-mark .cell {
+  fill: transparent;
+}
+.wordmark-mark .cell.is-on {
+  fill: var(--ink);
+}
+.wordmark-type {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.42em;
+  font-family: var(--brand);
+  line-height: 1;
+  white-space: nowrap;
+}
+.wordmark-data {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+.wordmark-based {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.wordmark:hover .cell.is-on {
+  fill: transparent;
+}
+.wordmark:hover .cell.is-next {
+  fill: var(--ink);
+}
+.wordmark:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 2px;
+}
+.wordmark:hover,
+.brand a.wordmark:hover {
+  color: var(--ink);
+}
