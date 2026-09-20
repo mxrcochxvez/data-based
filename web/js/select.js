@@ -109,7 +109,14 @@
 
     function onPointerDown(ev) {
       if (blocked()) return;
-      if (ev.target.closest(".btn") || ev.target.closest("[data-edit]") || ev.target.closest("[data-next]") || ev.target.closest(".flow-port") || ev.target.closest(".wire-hit") || ev.target.closest(".wire-kill")) return;
+      if (ev.button != null && ev.button !== 0) return;
+      if (session && session.pointerId != null && ev.pointerId !== session.pointerId) {
+        hideMarquee();
+        session = null;
+        state.dragged = false;
+        return;
+      }
+      if (ev.target.closest(".btn") || ev.target.closest("[data-edit]") || ev.target.closest("[data-next]") || ev.target.closest(".flow-port") || ev.target.closest(".wire-hit") || ev.target.closest(".wire-unlink") || ev.target.closest(".board-menu")) return;
 
       if (ev.target.closest(".note-text")) {
         const card = cardFromEvent(ev.target);
@@ -128,6 +135,7 @@
       if (panning()) {
         session = {
           kind: "pan",
+          pointerId: ev.pointerId,
           x: ev.clientX,
           y: ev.clientY,
           sl: scroller.scrollLeft,
@@ -145,6 +153,7 @@
         setSelection([card.id]);
         session = {
           kind: "resize",
+          pointerId: ev.pointerId,
           id: card.id,
           x: ev.clientX,
           y: ev.clientY,
@@ -168,6 +177,7 @@
         const ids = selectedIds().includes(card.id) ? selectedIds() : [card.id];
         session = {
           kind: "move",
+          pointerId: ev.pointerId,
           ids,
           x: ev.clientX,
           y: ev.clientY,
@@ -184,6 +194,7 @@
       const origin = canvasPt(canvas, ev);
       session = {
         kind: "marquee",
+        pointerId: ev.pointerId,
         origin,
         additive: ev.shiftKey,
         baseline: ev.shiftKey ? selectedIds() : [],
@@ -194,6 +205,7 @@
 
     function onPointerMove(ev) {
       if (!session) return;
+      if (session.pointerId != null && ev.pointerId !== session.pointerId) return;
       if (session.kind === "pan") {
         scroller.scrollLeft = session.sl - (ev.clientX - session.x);
         scroller.scrollTop = session.st - (ev.clientY - session.y);
@@ -238,8 +250,9 @@
       }
     }
 
-    function onPointerUp() {
+    function onPointerUp(ev) {
       if (!session) return;
+      if (ev && session.pointerId != null && ev.pointerId !== session.pointerId) return;
       if (session.kind === "marquee") {
         if (!session.armed && !session.additive) setSelection([]);
         hideMarquee();
@@ -249,6 +262,20 @@
       state.drag = null;
       state.pan = null;
     }
+
+    function abortGesture() {
+      if (!session) return;
+      hideMarquee();
+      session = null;
+      state.dragged = false;
+      state.drag = null;
+      state.pan = null;
+    }
+
+    scroller.addEventListener("selectstart", (ev) => {
+      if (ev.target.closest("input, textarea, select, [contenteditable]")) return;
+      ev.preventDefault();
+    });
 
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
@@ -283,6 +310,7 @@
       selectAll,
       clearSelection: () => setSelection([]),
       isPanning: panning,
+      abortGesture,
     };
   }
 
