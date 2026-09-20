@@ -13,4 +13,14 @@ decisions.tsv
 !web/*.js
 !web/js/*.js
 web/data/
+web/data/mcp-keys.json
+web/data/ingests.json
+web/data/*.tmp
 !*.bend
+node_modules/
+.vercel
+.vercel-public
+.env.local
+.env.*.local
+.env*
+!.env.example
