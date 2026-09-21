@@ -15,7 +15,7 @@
 
   function onAppPage() {
     const p = pagePath();
-    return p === APP_PATH || /\/app\/index\.html$/.test(p);
+    return p === APP_PATH || p === "/app.html" || /\/app\/index\.html$/.test(p);
   }
 
   function appUrl() {
@@ -284,7 +284,9 @@
     return {
       strategy: "oauth_google",
       redirectUrl: splashUrl(),
-      redirectUrlComplete: appUrl(),
+      // Stay on `/` so Clerk does not need `/app` on the allowlist.
+      // afterSession() then location.replace('/app') once the JWT is verified.
+      redirectUrlComplete: splashUrl(),
     };
   }
 

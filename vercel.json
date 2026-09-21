@@ -9,7 +9,8 @@
     { "source": "/mcp/:path*", "destination": "/api/mcp?orig=/mcp/:path*" },
     { "source": "/api/mcp/:path*", "destination": "/api/mcp?orig=/api/mcp/:path*" },
     { "source": "/api/access/:path*", "destination": "/api/access?orig=/api/access/:path*" },
-    { "source": "/app", "destination": "/app/index.html" }
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/app/", "destination": "/app.html" }
   ],
   "functions": {
     "api/mcp.mjs": {

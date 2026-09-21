@@ -144,7 +144,7 @@ export async function handleAccessHttp(req, res) {
 function safeFile(urlPath) {
   const rel = decodeURIComponent(urlPath.split("?")[0]);
   let cleaned = rel === "/" || rel === "" ? "/index.html" : rel;
-  if (cleaned === "/app" || cleaned === "/app/") cleaned = "/app/index.html";
+  if (cleaned === "/app" || cleaned === "/app/") cleaned = "/app.html";
   const abs = path.normalize(path.join(ROOT, cleaned));
   if (!abs.startsWith(ROOT)) return null;
   return abs;

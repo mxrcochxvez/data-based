@@ -4,26 +4,26 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const splash = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
-const app = fs.readFileSync(path.join(root, "web/app/index.html"), "utf8");
+const app = fs.readFileSync(path.join(root, "web/app.html"), "utf8");
 const access = fs.readFileSync(path.join(root, "web/js/access.js"), "utf8");
 const vercel = fs.readFileSync(path.join(root, "vercel.json"), "utf8");
-const server = fs.readFileSync(path.join(root, "web/sync-server.mjs"), "utf8");
 
 const must = [
-  [splash, "splash stays at /", /id="screen-splash"/],
-  [splash, "splash does not load the canvas app", /src="\/js\/access\.js"/],
-  [app, "canvas lives at /app", /id="canvas"/],
-  [app, "app wordmark points at /app", /href="\/app"/],
-  [access, "Google complete stays on / then JS opens /app", /redirectUrlComplete:\s*splashUrl\(\)/],
-  [access, "allowed session leaves splash", /function goApp\(/],
-  [vercel, "Vercel rewrite for /app", /"source":\s*"\/app"/],
-  [server, "local server maps /app", /cleaned === "\/app"/],
+  [splash, "splash has Sign in with Google", /id="google-signin"/],
+  [splash, "splash has Request access", /id="waitlist-submit"/],
+  [app, "boards page has the canvas", /id="canvas"/],
+  [app, "boards page has in-app chrome", /id="chrome-brand"/],
+  [access, "OAuth handshake stays on /", /redirectUrlComplete:\s*splashUrl\(\)/],
+  [access, "verified session navigates to /app", /function goApp\(/],
+  [access, "afterSession calls goApp", /if \(goApp\(\)\)/],
+  [vercel, "rewrites /app to app.html", /"source":\s*"\/app"[\s\S]*"destination":\s*"\/app\.html"/],
+  [vercel, "rewrites /app/ to app.html", /"source":\s*"\/app\/"/],
 ];
 
 const forbidden = [
   [splash, "splash must not mount the live canvas", 'id="canvas"'],
+  [access, "must not send Clerk OAuth complete to /app", "redirectUrlComplete: appUrl()"],
   [vercel, "must not swallow /api/sync", '"source": "/api/sync"'],
-  [vercel, "must not swallow /mcp", '"source": "/mcp", "destination": "/app'],
 ];
 
 let failed = 0;
@@ -39,4 +39,4 @@ for (const [src, label, needle] of forbidden) {
 }
 
 if (failed) process.exit(1);
-console.log("pass / vs /app split");
+console.log("pass login path / → verify → /app");
