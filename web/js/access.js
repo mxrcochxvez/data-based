@@ -144,6 +144,38 @@
     }
   }
 
+  function activateSession(clerk) {
+    if (!clerk || clerkSessionPresent()) return Promise.resolve(clerk);
+    const sessions = clerk.client && clerk.client.sessions;
+    const sid = (clerk.client && clerk.client.lastActiveSessionId)
+      || (sessions && sessions[0] && sessions[0].id);
+    if (sid && typeof clerk.setActive === "function") {
+      return clerk.setActive({ session: sid }).then(function () { return clerk; }).catch(function () { return clerk; });
+    }
+    return Promise.resolve(clerk);
+  }
+
+  function waitForSession(clerk, ms) {
+    if (clerkSessionPresent()) return Promise.resolve(clerk);
+    return new Promise(function (resolve) {
+      let settled = false;
+      const done = function () {
+        if (settled) return;
+        settled = true;
+        resolve(clerk);
+      };
+      const t = setTimeout(done, ms || 400);
+      if (clerk && typeof clerk.addListener === "function") {
+        clerk.addListener(function (res) {
+          if (res && (res.user || res.session)) {
+            clearTimeout(t);
+            done();
+          }
+        });
+      }
+    });
+  }
+
   function oauthBounce() {
     return /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(String(location.href));
   }
@@ -440,6 +472,68 @@
     };
   }
 
+  function oauthPopupArgs(popup) {
+    const args = oauthRedirectArgs();
+    args.popup = popup;
+    return args;
+  }
+
+  function closePopup(popup) {
+    try {
+      if (popup && !popup.closed) popup.close();
+    } catch (_) {}
+  }
+
+  function popupBlocked(popup) {
+    try {
+      return !popup || popup.closed;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function openGooglePopup() {
+    try {
+      const w = 480;
+      const h = 640;
+      const left = Math.max(0, ((window.screen && window.screen.width ? window.screen.width : 0) - w) / 2);
+      const top = Math.max(0, ((window.screen && window.screen.height ? window.screen.height : 0) - h) / 2);
+      const popup = window.open(
+        "about:blank",
+        "databased-google",
+        "popup=yes,width=" + w + ",height=" + h + ",left=" + left + ",top=" + top
+      );
+      if (popup) {
+        try {
+          popup.document.open();
+          popup.document.write("<!doctype html><title>Google</title><body style=\"font:14px/1.4 sans-serif;padding:24px\">Opening Google…</body>");
+          popup.document.close();
+        } catch (_) {}
+      }
+      return popup;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isPopupFailed(err) {
+    const t = clerkErrorText(err) + " " + (err && err.name ? err.name : "");
+    return /popup|blocked|closed|COOP|opener/i.test(t);
+  }
+
+  function resetGoogleButton() {
+    const btn = $("google-signin");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Sign in with Google";
+    }
+    const err = $("who-err");
+    if (err && err.textContent === "Opening Google…") {
+      err.hidden = true;
+      err.textContent = "";
+    }
+  }
+
   function clerkErrorText(err) {
     if (!err) return "";
     if (typeof err === "string") return err;
@@ -482,44 +576,121 @@
     return "Clerk Restricted will not create a user from Google until that email is invited. In Clerk Development → Users → Invitations, invite the Google email (the SYSTEM_USER_EMAIL address for the operator). Open the invite, then use Google again.";
   }
 
-  function startGoogleOAuth(clerk, preferSignUp) {
-    const args = oauthRedirectArgs();
+  function oauthResources(clerk, preferSignUp) {
     const client = clerk && clerk.client;
     const signUp = client && client.signUp;
     const signIn = client && client.signIn;
-    if (preferSignUp && signUp && typeof signUp.authenticateWithRedirect === "function") {
-      return signUp.authenticateWithRedirect(args);
-    }
-    if (!preferSignUp && signIn && typeof signIn.authenticateWithRedirect === "function") {
-      return signIn.authenticateWithRedirect(args);
-    }
-    if (signUp && typeof signUp.authenticateWithRedirect === "function") {
-      return signUp.authenticateWithRedirect(args);
-    }
-    if (signIn && typeof signIn.authenticateWithRedirect === "function") {
-      return signIn.authenticateWithRedirect(args);
-    }
-    if (clerk && typeof clerk.authenticateWithRedirect === "function") {
-      return clerk.authenticateWithRedirect(args);
+    return preferSignUp ? [signUp, signIn, clerk] : [signIn, signUp, clerk];
+  }
+
+  function startGoogleRedirect(clerk, preferSignUp) {
+    const args = oauthRedirectArgs();
+    const resources = oauthResources(clerk, preferSignUp);
+    for (let i = 0; i < resources.length; i++) {
+      const resource = resources[i];
+      if (resource && typeof resource.authenticateWithRedirect === "function") {
+        return resource.authenticateWithRedirect(args).then(function () { return "redirect"; });
+      }
     }
     return Promise.reject(new Error("Google OAuth is not ready"));
   }
 
-  function transferOrSignUp(clerk) {
+  function startGooglePopup(clerk, preferSignUp, popup) {
+    const args = oauthPopupArgs(popup);
+    const resources = oauthResources(clerk, preferSignUp);
+    for (let i = 0; i < resources.length; i++) {
+      const resource = resources[i];
+      if (resource && typeof resource.authenticateWithPopup === "function") {
+        return resource.authenticateWithPopup(args).then(function () { return "popup"; });
+      }
+    }
+    return Promise.reject(new Error("Google popup is not ready"));
+  }
+
+  function startGoogleOAuth(clerk, preferSignUp, popup) {
+    if (popup && !popupBlocked(popup)) {
+      return startGooglePopup(clerk, preferSignUp, popup).catch(function (err) {
+        if (!isPopupFailed(err)) throw err;
+        closePopup(popup);
+        return startGoogleRedirect(clerk, preferSignUp);
+      });
+    }
+    closePopup(popup);
+    return startGoogleRedirect(clerk, preferSignUp);
+  }
+
+  function waitForPopupSession(clerk, popup) {
+    if (clerkSessionPresent()) return Promise.resolve(clerk);
+    return new Promise(function (resolve, reject) {
+      let settled = false;
+      const finish = function (err) {
+        if (settled) return;
+        settled = true;
+        try { window.removeEventListener("message", onMsg); } catch (_) {}
+        if (err) reject(err);
+        else resolve(clerk);
+      };
+      function onMsg(event) {
+        try {
+          const origin = String(event.origin || "");
+          if (origin.indexOf("clerk.accounts.dev") < 0 && origin.indexOf("accounts.dev") < 0) return;
+          if (event.data && event.data.session && typeof clerk.setActive === "function") {
+            clerk.setActive({ session: event.data.session }).then(function () { finish(); }).catch(function () { finish(); });
+            return;
+          }
+          if (event.data && (event.data.session || event.data.return_url) && clerkSessionPresent()) finish();
+        } catch (_) {}
+      }
+      window.addEventListener("message", onMsg);
+      if (clerk && typeof clerk.addListener === "function") {
+        clerk.addListener(function (res) {
+          if (res && (res.user || res.session)) finish();
+        });
+      }
+      const poll = setInterval(function () {
+        if (clerkSessionPresent()) {
+          clearInterval(poll);
+          finish();
+          return;
+        }
+        try {
+          if (popupBlocked(popup)) {
+            clearInterval(poll);
+            if (clerkSessionPresent()) finish();
+            else finish(new Error("popup_closed"));
+          }
+        } catch (_) {
+          clearInterval(poll);
+          finish(new Error("popup_closed"));
+        }
+      }, 250);
+    });
+  }
+
+  function leaveSplashForApp() {
+    return goApp();
+  }
+
+  function afterPopupSession(clerk) {
+    return activateSession(clerk).then(function (live) {
+      return waitForSession(live, 1500).then(function () {
+        if (clerkSessionPresent()) leaveSplashForApp();
+        return afterSession();
+      });
+    });
+  }
+
+  function transferOrSignUp(clerk, popup) {
     const signUp = clerk && clerk.client && clerk.client.signUp;
     if (signUp && typeof signUp.create === "function") {
       return signUp.create({ transfer: true }).then(function (su) {
         if (su && su.status === "complete" && su.createdSessionId && typeof clerk.setActive === "function") {
           return clerk.setActive({ session: su.createdSessionId }).then(function () { return clerk; });
         }
-        const run = su && typeof su.authenticateWithRedirect === "function"
-          ? su.authenticateWithRedirect.bind(su)
-          : (typeof signUp.authenticateWithRedirect === "function" ? signUp.authenticateWithRedirect.bind(signUp) : null);
-        if (run) return run(oauthRedirectArgs()).then(function () { return clerk; });
-        throw new Error("external_account_not_found");
+        return startGoogleOAuth(clerk, true, popup).then(function () { return clerk; });
       });
     }
-    return startGoogleOAuth(clerk, true).then(function () { return clerk; });
+    return startGoogleOAuth(clerk, true, popup).then(function () { return clerk; });
   }
 
   function finishOAuthBounce(clerk) {
@@ -555,6 +726,21 @@
     );
   }
 
+  function canPopup(clerk) {
+    const client = clerk && clerk.client;
+    return Boolean(
+      (client && (
+        (client.signUp && typeof client.signUp.authenticateWithPopup === "function")
+        || (client.signIn && typeof client.signIn.authenticateWithPopup === "function")
+      ))
+      || (clerk && typeof clerk.authenticateWithPopup === "function")
+    );
+  }
+
+  function canOAuth(clerk) {
+    return canPopup(clerk) || canRedirect(clerk);
+  }
+
   function paintOpening() {
     const btn = $("google-signin");
     if (btn) {
@@ -569,7 +755,7 @@
   }
 
   function googleReadyThen(run) {
-    if (canRedirect(global.Clerk)) return Promise.resolve(run(global.Clerk));
+    if (canOAuth(global.Clerk)) return Promise.resolve(run(global.Clerk));
     const cfgP = clerkPk && clerkFapi
       ? Promise.resolve({ publishableKey: clerkPk, frontendApi: clerkFapi })
       : Promise.resolve(global.__databasedClerkPreload || fetch("/api/config").then((res) => (res.ok ? res.json() : null)).catch(() => null));
@@ -589,8 +775,11 @@
 
   function signInGoogle() {
     paintOpening();
+    const popup = openGooglePopup();
     googleReadyThen(function (clerk) {
-    if (!canRedirect(clerk)) {
+    if (!canOAuth(clerk)) {
+      closePopup(popup);
+      resetGoogleButton();
       const err = $("who-err");
       if (err) {
         err.hidden = false;
@@ -604,21 +793,54 @@
       }
       return;
     }
-    return startGoogleOAuth(clerk, true).catch(function (err) {
+    const run = function (preferSignUp, win) {
+      return startGoogleOAuth(clerk, preferSignUp, win).then(function (mode) {
+        if (mode === "popup") {
+          return waitForPopupSession(clerk, win).then(function () {
+            closePopup(win);
+            return afterPopupSession(clerk);
+          }).catch(function (waitErr) {
+            if (clerkSessionPresent()) return afterPopupSession(clerk);
+            if (isPopupFailed(waitErr)) {
+              closePopup(win);
+              resetGoogleButton();
+              return;
+            }
+            throw waitErr;
+          });
+        }
+      });
+    };
+    return run(true, popup).catch(function (err) {
       if (isRestrictedSignUp(err)) {
-        if (err) {
-          const box = $("who-err");
-          if (box) {
-            box.hidden = false;
-            box.textContent = restrictedMessage();
-          }
+        closePopup(popup);
+        resetGoogleButton();
+        const box = $("who-err");
+        if (box) {
+          box.hidden = false;
+          box.textContent = restrictedMessage();
         }
         return;
       }
       if (isMissingExternalAccount(err)) {
-        return startGoogleOAuth(clerk, true);
+        return run(true, popup);
       }
-      return startGoogleOAuth(clerk, false).catch(function (second) {
+      if (isPopupFailed(err) && canRedirect(clerk)) {
+        closePopup(popup);
+        return startGoogleRedirect(clerk, true).catch(function (second) {
+          resetGoogleButton();
+          const box = $("who-err");
+          if (box) {
+            box.hidden = false;
+            box.textContent = isRestrictedSignUp(second)
+              ? restrictedMessage()
+              : (clerkErrorText(second) || "Google sign-in failed. Enable Google on the Clerk instance, or invite this email in Development.");
+          }
+        });
+      }
+      return run(false, popup).catch(function (second) {
+        closePopup(popup);
+        resetGoogleButton();
         const box = $("who-err");
         if (box) {
           box.hidden = false;
@@ -682,7 +904,7 @@
       return false;
     }
     if (!onAppPage()) {
-      goApp();
+      leaveSplashForApp();
       finish(true);
       return true;
     }
@@ -735,7 +957,9 @@
                   if (res && res.user && session.ready && (session.denied || !session.hasAppAccess)) afterSession();
                 });
               }
-              if (!ready.user) {
+              return activateSession(ready).then(function (live) {
+                return waitForSession(live, onAppPage() ? 2500 : 400).then(function () {
+              if (!clerkSessionPresent()) {
                 const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
                 if (bouncedGoogle && clerkFail) {
                   showWho(clerkFail);
@@ -754,6 +978,8 @@
                 return false;
               }
               return afterSession();
+                });
+              });
             });
           }).catch(function (err) {
             const detail = err && err.message ? String(err.message) : "";

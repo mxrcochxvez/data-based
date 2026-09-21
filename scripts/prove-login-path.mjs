@@ -16,6 +16,8 @@ const must = [
   [app, "boards page has in-app chrome", /id="chrome-brand"/],
   [access, "OAuth handshake uses splash origin", /redirectUrl:\s*splash/],
   [access, "OAuth complete may land on /app", /redirectUrlComplete:\s*app/],
+  [access, "Google uses Clerk authenticateWithPopup", /authenticateWithPopup/],
+  [access, "popup is opened synchronously on Sign in click", /window\.open\(/],
   [access, "Clerk session leaves splash before server verify", /if \(!onAppPage\(\)\)/],
   [access, "verified session navigates to /app", /function goApp\(/],
   [vercel, "rewrites /app to app.html", /"source":\s*"\/app"[\s\S]*"destination":\s*"\/app\.html"/],
