@@ -118,6 +118,10 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: var(--shadow);
 }
 
+#liveblocks-badge {
+  z-index: 5 !important;
+}
+
 .brand {
   top: 12px;
   left: 12px;
@@ -722,6 +726,12 @@ textarea {
     border-radius: 14px;
     gap: 2px;
     z-index: calc(var(--z-chrome) + 1);
+  }
+  #liveblocks-badge {
+    top: calc(56px + env(safe-area-inset-top)) !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: auto !important;
+    left: auto !important;
   }
   .tools .rule,
   .tools [data-nav] {
