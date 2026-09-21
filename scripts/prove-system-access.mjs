@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 process.env.SYSTEM_USER_EMAIL = "  MarcoDe.Chavez.Jr@gmail.com ";
 delete process.env.DATABSED_SYSTEM_EMAIL;
@@ -74,7 +75,13 @@ assert.equal(missing.isSystem, false);
 assert.match(missing.systemHint, /SYSTEM_USER_EMAIL is not set/);
 if (missing.acl) assert.equal(missing.hasAppAccess, false);
 
-const { emailsFromClaims, emailsFromClerkUser } = await import("../web/mcp/clerk.mjs");
+const {
+  emailsFromClaims,
+  emailsFromClerkUser,
+  bearerToken,
+  sessionCookieToken,
+  clerkSessionToken,
+} = await import("../web/mcp/clerk.mjs");
 assert.deepEqual(
   emailsFromClaims({ username: "not-an-email", email: "  A@B.com " }),
   ["a@b.com"]
@@ -90,5 +97,20 @@ assert.deepEqual(
   }),
   ["primary@x.com", "other@x.com"]
 );
+
+const jwt = "eyJhbGciOiJIUzI1NiJ9.e30.sig";
+assert.equal(bearerToken({ headers: { authorization: "Bearer " + jwt } }), jwt);
+assert.equal(sessionCookieToken({ headers: { cookie: "__client_uat=1; __session=" + jwt } }), jwt);
+assert.equal(clerkSessionToken({ headers: { cookie: "__session=" + jwt } }), jwt);
+assert.equal(
+  clerkSessionToken({ headers: { authorization: "Bearer dbk_abc", cookie: "__session=" + jwt } }),
+  jwt
+);
+
+const toolsSrc = fs.readFileSync(new URL("../web/mcp/tools.mjs", import.meta.url), "utf8");
+assert.doesNotMatch(toolsSrc, /createRequire/);
+assert.doesNotMatch(toolsSrc, /require\(\s*["']\.\.\/js\/export\.js["']\s*\)/);
+const accessApi = fs.readFileSync(new URL("../api/access.mjs", import.meta.url), "utf8");
+assert.doesNotMatch(accessApi, /sync-server/);
 
 console.log("pass system access + clerk email claims");

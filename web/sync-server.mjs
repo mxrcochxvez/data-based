@@ -212,9 +212,9 @@ const server = http.createServer((req, res) => {
 });
 
 function startedFromCli() {
-  const self = fileURLToPath(import.meta.url);
-  const argv1 = process.argv[1] ? fs.realpathSync(process.argv[1]) : "";
   try {
+    const self = fileURLToPath(import.meta.url);
+    const argv1 = process.argv[1] ? fs.realpathSync(process.argv[1]) : "";
     return argv1 && fs.realpathSync(self) === argv1;
   } catch (_) {
     return false;

@@ -178,6 +178,7 @@
       return authHeaders().then((headers) => fetch(ENDPOINT, {
         method: "PUT",
         headers,
+        credentials: "same-origin",
         body,
         keepalive: true,
       })).then((res) => {
@@ -189,6 +190,7 @@
     return authHeaders().then((headers) => quietFetch(ENDPOINT, {
       method: "PUT",
       headers,
+      credentials: "same-origin",
       body,
       keepalive: reason === "hide" || reason === "unload",
     })).then((res) => {
@@ -199,7 +201,7 @@
 
   function pull() {
     if (!isAuthed()) return Promise.resolve(false);
-    return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers })).then((res) => {
+    return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers, credentials: "same-origin" })).then((res) => {
       if (!res) return false;
       return res.json().then((remote) => {
         if (!remote || !Array.isArray(remote.boards)) return false;

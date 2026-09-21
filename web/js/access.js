@@ -30,8 +30,17 @@
       Accept: "application/json",
     };
     try {
-      if (global.Clerk && global.Clerk.session && typeof global.Clerk.session.getToken === "function") {
-        const token = await global.Clerk.session.getToken();
+      const clerk = global.Clerk;
+      if (clerk && clerk.user && !clerk.session) {
+        const sessions = clerk.client && clerk.client.sessions;
+        const sid = (clerk.client && clerk.client.lastActiveSessionId)
+          || (sessions && sessions[0] && sessions[0].id);
+        if (sid && typeof clerk.setActive === "function") {
+          await clerk.setActive({ session: sid });
+        }
+      }
+      if (clerk && clerk.session && typeof clerk.session.getToken === "function") {
+        const token = await clerk.session.getToken({ skipCache: true });
         if (token) h.Authorization = "Bearer " + token;
       }
     } catch (_) {}
@@ -160,7 +169,7 @@
   }
 
   function fetchMe() {
-    return headers().then((h) => fetch("/api/access/me", { headers: h }))
+    return headers().then((h) => fetch("/api/access/me", { headers: h, credentials: "same-origin" }))
       .then((res) => res.json().then((data) => ({ res, data })).catch(() => ({ res, data: null })))
       .catch(() => null);
   }
@@ -425,12 +434,19 @@
         return false;
       }
       applyMe(out.data);
+      if (!out.data) {
+        showWho("The access API did not return JSON, so this server never verified a Clerk session. That is not the invite gate.");
+        finish(false);
+        return false;
+      }
       if (!session.verified) {
         const uid = (clerkUser && clerkUser.id) || session.clerkUserId || "";
         const err = session.identityError;
         let msg = "Google finished in the browser, but this server did not verify a Clerk session for you. That is not the invite gate.";
         if (err === "verify_failed") {
           msg = "Clerk signed you in in the browser, but the server could not verify the session JWT. CLERK_SECRET_KEY must belong to the same Clerk application as the publishable key.";
+        } else if (err === "key_mismatch") {
+          msg = "Clerk publishable key and CLERK_SECRET_KEY are not the same kind of instance (pk_test must pair with sk_test, pk_live with sk_live) on this Vercel environment.";
         } else if (err === "no_email") {
           msg = "Clerk session verified, but the JWT and user record had no email. Check the Google account’s email on " + clerkWhere() + ".";
         } else if (err === "no_token") {
@@ -526,14 +542,14 @@
   }
 
   function users() {
-    return headers().then((h) => fetch("/api/access/users", { headers: h })).then((res) => {
+    return headers().then((h) => fetch("/api/access/users", { headers: h, credentials: "same-origin" })).then((res) => {
       if (res.status === 403) return Promise.reject(new Error("forbidden"));
       return res.ok ? res.json() : Promise.reject(new Error("users failed"));
     });
   }
 
   function boards() {
-    return headers().then((h) => fetch("/api/access/boards", { headers: h })).then((res) => {
+    return headers().then((h) => fetch("/api/access/boards", { headers: h, credentials: "same-origin" })).then((res) => {
       if (res.status === 403) return Promise.reject(new Error("forbidden"));
       return res.ok ? res.json() : Promise.reject(new Error("boards failed"));
     });
@@ -543,6 +559,7 @@
     return headers().then((h) => fetch("/api/access/invite", {
       method: "POST",
       headers: h,
+      credentials: "same-origin",
       body: JSON.stringify({ email }),
     })).then((res) => res.json().then((data) => ({ ok: res.ok, status: res.status, data })));
   }
@@ -551,6 +568,7 @@
     return headers().then((h) => fetch("/api/access/revoke", {
       method: "POST",
       headers: h,
+      credentials: "same-origin",
       body: JSON.stringify({ email }),
     })).then((res) => res.json().then((data) => ({ ok: res.ok, status: res.status, data })));
   }
