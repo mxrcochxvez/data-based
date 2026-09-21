@@ -10,19 +10,21 @@ const vercel = fs.readFileSync(path.join(root, "vercel.json"), "utf8");
 
 const must = [
   [splash, "splash has Sign in with Google", /id="google-signin"/],
+  [splash, "splash preloads Clerk before access.js", /js\/clerk-boot\.js/],
   [splash, "splash has Request access", /id="waitlist-submit"/],
   [app, "boards page has the canvas", /id="canvas"/],
   [app, "boards page has in-app chrome", /id="chrome-brand"/],
-  [access, "OAuth handshake stays on /", /redirectUrlComplete:\s*splashUrl\(\)/],
+  [access, "OAuth handshake uses splash origin", /redirectUrl:\s*splash/],
+  [access, "OAuth complete may land on /app", /redirectUrlComplete:\s*app/],
+  [access, "Clerk session leaves splash before server verify", /if \(!onAppPage\(\)\)/],
   [access, "verified session navigates to /app", /function goApp\(/],
-  [access, "afterSession calls goApp", /if \(goApp\(\)\)/],
   [vercel, "rewrites /app to app.html", /"source":\s*"\/app"[\s\S]*"destination":\s*"\/app\.html"/],
   [vercel, "rewrites /app/ to app.html", /"source":\s*"\/app\/"/],
 ];
 
 const forbidden = [
   [splash, "splash must not mount the live canvas", 'id="canvas"'],
-  [access, "must not send Clerk OAuth complete to /app", "redirectUrlComplete: appUrl()"],
+  [access, "must not wait on splash for SYSTEM_USER_EMAIL before leaving", "Nobody can be the system operator until it is set on this Vercel environment"],
   [vercel, "must not swallow /api/sync", '"source": "/api/sync"'],
 ];
 

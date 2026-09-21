@@ -14,7 +14,7 @@ const must = [
   [splash, "splash does not load the canvas app", /src="\/js\/access\.js"/],
   [app, "canvas lives at /app", /id="canvas"/],
   [app, "app wordmark points at /app", /href="\/app"/],
-  [access, "Google complete stays on / then JS opens /app", /redirectUrlComplete:\s*splashUrl\(\)/],
+  [access, "Google complete may return to /app", /redirectUrlComplete:\s*app/],
   [access, "allowed session leaves splash", /function goApp\(/],
   [vercel, "Vercel rewrite for /app", /"source":\s*"\/app"/],
   [server, "local server maps /app", /cleaned === "\/app"/],

@@ -44,7 +44,7 @@ export function pickIdentityEmail(emails) {
   for (const e of list) {
     if (!seen.includes(e)) seen.push(e);
   }
-  const sys = systemEmail();
+  const sys = operatorEmail();
   if (sys) {
     const hit = seen.find((e) => emailsMatch(e, sys));
     if (hit) return hit;
@@ -56,17 +56,21 @@ export function systemEmail() {
   return normalizeEmail(process.env.SYSTEM_USER_EMAIL || process.env.DATABSED_SYSTEM_EMAIL || "");
 }
 
-export function contactEmail() {
+export function operatorEmail() {
   return systemEmail() || CONTACT_FALLBACK;
+}
+
+export function contactEmail() {
+  return operatorEmail();
 }
 
 export function systemEnvHint() {
   if (systemEmail()) return "";
-  return "SYSTEM_USER_EMAIL is not set on this server environment. Nobody is the system operator until it is set and the app is redeployed.";
+  return "SYSTEM_USER_EMAIL is not set on this server environment. The operator fallback is " + CONTACT_FALLBACK + ".";
 }
 
 export function isSystemHandle(handle) {
-  const sys = systemEmail();
+  const sys = operatorEmail();
   return Boolean(sys && emailsMatch(handle, sys));
 }
 
@@ -74,7 +78,7 @@ let ensuredSystem = false;
 
 export async function ensureSystemClerkUser() {
   if (ensuredSystem) return { skipped: true };
-  const email = systemEmail();
+  const email = operatorEmail();
   if (!email || !clerkConfigured()) return { invited: false, skipped: true };
   ensuredSystem = true;
   return inviteClerkEmail(email);
@@ -358,9 +362,9 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   const ident = await identityDetailsFromReq(req);
   const handle = ident.email || "";
   const doc = await readAccess(dataDir);
-  await ensureSystemClerkUser();
 
   const isMe = path === "/api/access" || path === "/api/access/" || path === "/api/access/me";
+  if (!isMe) await ensureSystemClerkUser();
   const isUsers = path === "/api/access/users" || /\/users$/.test(path) || url.searchParams.get("users") === "1";
   const isBoards = path === "/api/access/boards" || /\/boards$/.test(path) || url.searchParams.get("boards") === "1";
   const isInvite = path === "/api/access/invite" || /\/invite$/.test(path);
