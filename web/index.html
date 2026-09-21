@@ -219,11 +219,11 @@
         <div class="splash-canvas">
           <div class="splash-world">
             <svg class="splash-wires" viewBox="0 0 640 400" aria-hidden="true">
-              <path d="M244 118 C 310 118, 310 208, 368 208"/>
-              <path d="M244 232 C 300 232, 300 208, 368 208"/>
+              <path pathLength="1" d="M244 118 C 310 118, 310 208, 368 208"/>
+              <path pathLength="1" d="M244 232 C 300 232, 300 208, 368 208"/>
             </svg>
             <div class="splash-boardchip">billing</div>
-            <article class="card splash-card" style="left:48px;top:52px;width:196px;min-height:0">
+            <article class="card splash-card splash-card-user">
               <div class="card-bar"><span class="card-kind">Prisma</span><span class="card-title">User</span></div>
               <div class="card-body">
                 <ul>
@@ -233,7 +233,7 @@
                 </ul>
               </div>
             </article>
-            <article class="card splash-card" style="left:48px;top:196px;width:196px;min-height:0">
+            <article class="card splash-card splash-card-org">
               <div class="card-bar"><span class="card-kind">SQL</span><span class="card-title">Org</span></div>
               <div class="card-body">
                 <ul>
@@ -242,7 +242,7 @@
                 </ul>
               </div>
             </article>
-            <article class="card splash-card is-sel" style="left:368px;top:148px;width:220px;min-height:0">
+            <article class="card splash-card splash-card-gql is-sel">
               <div class="card-bar"><span class="card-kind">GraphQL</span><span class="card-title">schema</span></div>
               <div class="card-body">
                 <code>type User { id: ID! }</code>
