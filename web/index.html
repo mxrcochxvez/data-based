@@ -109,10 +109,15 @@
 
   <aside class="island comments-panel" id="comments-panel" hidden>
     <header class="comments-head">
-      <h2>Comments</h2>
+      <button type="button" class="comments-back" id="comments-back" hidden aria-label="All comments">Back</button>
+      <h2 id="comments-title">Comments</h2>
       <button type="button" class="comments-hide" aria-label="Hide comments">Hide</button>
     </header>
     <div class="comments-list" id="comments-list"></div>
+    <form class="comment-reply" id="comment-reply" hidden action="#">
+      <textarea id="comment-reply-text" class="comment-reply-text" rows="2" placeholder="Reply" aria-label="Reply"></textarea>
+      <button type="submit" class="comment-reply-post btn">Reply</button>
+    </form>
   </aside>
 
   <p class="hint" id="chrome-hint">H marketplace · drag empty to select · ⌘A all · + − zoom · 0 reset · ⌫ delete</p>

@@ -184,7 +184,7 @@ New element types add data and reuse these classes. They do not grow one-off CSS
 `.card`. Selection class `.is-sel`. Notes use `.card.note`. Pipeline `+` is `.card-next`.
 
 ### Rail
-`.rail` / `.tools`. Vertical tool island. Do not restyle the brand island from this file. Header wordmark is owned elsewhere.
+`.rail` / `.tools`. Vertical tool island. Do not restyle the brand island from this file. Header wordmark is owned elsewhere. On a phone the tools sit in a bottom island. Comments open as a sheet above that island. The Liveblocks badge stays below the header, never over the tools.
 
 ### Marketplace
 `.market-grid` is a flat app launcher. `.offer` is icon then name. Prisma / Drizzle / GraphQL use vendor color tiles; other kinds stay ink on `--field`. Rail filters dim other tiles (`.offer.is-dim`). Do not bring back list rows or section headings in this panel.
