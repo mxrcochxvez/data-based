@@ -22,19 +22,168 @@
   <meta name="twitter:title" content="Data Based — collaborative architecture boards for engineers">
   <meta name="twitter:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
   <meta name="twitter:image" content="/og.png">
-  <link rel="stylesheet" href="/app.css">
-  <link rel="stylesheet" href="/css/brand.css">
-  <link rel="stylesheet" href="/css/splash.css">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="css/brand.css">
+  <link rel="stylesheet" href="css/splash.css">
+  <link rel="stylesheet" href="css/menu.css">
 </head>
 <body class="is-gated is-splash">
   <!--
     THESIS: Logged-out visitors meet the paper board itself — cream field, hairline frame, schema cards — not a Sign in wall and not a purple SaaS blob.
     OWN-WORLD: Cool gray #e6e6e3 dots on white page, ink #111, IBM Plex Condensed wordmark, 1px #d2d2cc rules, white card islands.
-    STORY: Request access stores the email on our waitlist. Marco invites from People. Then Sign in with Google opens /app.
+    STORY: Request access with email (Clerk waitlist). Marco enables the email in Clerk. Then Sign in with Google. The board is the product.
     FIRST VIEWPORT: Wordmark left (uncropped), Sign in with Google right. “Collaborative architecture boards.” stacked Request access. Framed shared-board preview.
     FORM: Pinned FigJam / Figma paper studio. Seed skipped — the brief named the world.
     FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
   -->
+  <div class="board" id="scroller" role="main" aria-label="Board">
+    <div class="world" id="world">
+      <div class="canvas" id="canvas" role="application" aria-label="Canvas">
+        <svg class="wires" id="wires" aria-hidden="true"></svg>
+        <div class="marquee" id="marquee" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="hud-empty" id="empty">
+    <h1>Place a table on the board.</h1>
+    <p class="hud-copy">Start with a table. The + adds a next-layer card. Drag a port onto another card to share a module — many tables can feed one repo. Notes stay put.</p>
+    <p class="hud-copy-phone">Open the marketplace to place a table. Long-press a card for edit, duplicate, or delete.</p>
+    <button type="button" class="btn" id="empty-open" aria-haspopup="dialog" aria-controls="market" aria-expanded="false">Open marketplace</button>
+  </aside>
+
+  <header class="island brand" id="chrome-brand">
+    <a class="wordmark" href="#/" aria-label="Data Based">
+      <svg class="wordmark-mark" viewBox="0 0 14 14" aria-hidden="true">
+        <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
+        <path class="grid" d="M7 0.5v13M0.5 7h13"/>
+        <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
+        <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
+      </svg>
+      <span class="wordmark-type">
+        <span class="wordmark-data">DATA</span>
+        <span class="wordmark-based">BASED</span>
+      </span>
+    </a>
+    <span class="rule" aria-hidden="true"></span>
+    <nav class="brand-nav" aria-label="Workspace">
+      <button type="button" class="chrome-board" id="board-switch" aria-haspopup="menu" aria-expanded="false" aria-controls="board-switch-menu">
+        <span class="chrome-board-name" id="board-name">Board</span>
+        <svg class="chrome-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <a class="chrome-share" href="#/invite" id="invite-link" title="Invite people to this board">Share</a>
+      <button type="button" class="chrome-more" id="chrome-more" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="chrome-menu">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>
+      </button>
+      <div class="chrome-pop" id="board-switch-menu" role="menu" aria-label="Boards" hidden></div>
+      <div class="chrome-pop" id="chrome-menu" role="menu" aria-label="Workspace" hidden>
+        <a class="chrome-pop-item is-phone-share" href="#/invite" id="invite-link-phone" role="menuitem">Share board</a>
+        <a class="chrome-pop-item" href="#/invite" id="mcp-link" role="menuitem">MCP key</a>
+        <button type="button" class="chrome-pop-item" id="export-open" role="menuitem" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export agent prompt</button>
+        <a class="chrome-pop-item" href="#/people" id="people-link" role="menuitem" hidden>People</a>
+        <div class="chrome-pop-rule" role="separator"></div>
+        <span class="who-chip" id="who-label" hidden></span>
+        <button type="button" class="chrome-pop-item is-danger" id="sign-out" role="menuitem" hidden>Sign out</button>
+      </div>
+    </nav>
+  </header>
+
+  <nav class="island rail tools" id="chrome-tools" aria-label="Tools">
+    <button type="button" class="tool" id="house" aria-label="Marketplace" aria-haspopup="dialog" aria-expanded="false" aria-controls="market" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 3l9 8.2V21h-7v-6H10v6H3V11.2Z"/></svg>
+    </button>
+    <button type="button" class="tool is-on" id="select" aria-label="Select" aria-pressed="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8.2-6.2 1.6L16 21l-3.2-1.2L9.6 13 5 3Z"/></svg>
+    </button>
+    <button type="button" class="tool" id="pan" aria-label="Pan" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11V6.5a1.5 1.5 0 0 1 3 0V11h1V5.5a1.5 1.5 0 0 1 3 0V11h1V7.5a1.5 1.5 0 0 1 3 0V14c0 4-2.2 7-7 7-3.6 0-6-2.2-6-5.5V12h2v-.2Z"/></svg>
+    </button>
+    <button type="button" class="tool zoom-pct" id="zoom-pct" aria-label="Reset zoom" title="Reset zoom · 0">100%</button>
+    <button type="button" class="tool" id="note-tool" aria-label="Note">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2h8l2 2v10H3V2Zm8 0v2h2"/></svg>
+    </button>
+    <span class="rule" aria-hidden="true"></span>
+    <button type="button" class="tool" data-nav="db" aria-label="Databases" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg>
+    </button>
+    <button type="button" class="tool" data-nav="logic" aria-label="Effects" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h8v3H9v7H7V6H4V3Z"/></svg>
+    </button>
+    <button type="button" class="tool" data-nav="api" aria-label="APIs" aria-haspopup="dialog" aria-expanded="false" aria-controls="market">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h4v2H3V5Zm6 0h4v2H9V5ZM3 9h10v2H3V9Z"/></svg>
+    </button>
+  </nav>
+
+  <p class="hint" id="chrome-hint">H marketplace · drag empty to select · ⌘A all · + − zoom · 0 reset · ⌫ delete</p>
+
+  <section class="screen" id="screen-boards" hidden role="main" aria-labelledby="boards-title">
+    <div class="sheet">
+      <h1 id="boards-title">Boards</h1>
+      <p class="lead">Each board is its own canvas. Invite to this board is a grant list. App access is granted only by the system user.</p>
+      <form class="create" id="new-board">
+        <label class="sr-only" for="board-name-input">Board name</label>
+        <input type="text" id="board-name-input" name="name" placeholder="Board name" required autocomplete="off">
+        <button type="submit" class="btn">Create board</button>
+      </form>
+      <ul class="board-list" id="board-list"></ul>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-invite" hidden role="main" aria-labelledby="invite-title">
+    <div class="sheet">
+      <a href="#/" class="back" id="invite-back">Back to board</a>
+      <h1 id="invite-title">Invite to this board</h1>
+      <p class="lead">Grant this board to an email. That does not grant product access. If they have no app access, they will see an error until the system user invites them into the product.</p>
+      <form class="create" id="grant-form">
+        <label class="sr-only" for="grant-handle">Email</label>
+        <input type="email" id="grant-handle" name="handle" placeholder="email" required autocomplete="off" aria-describedby="grant-err">
+        <button type="submit" class="btn">Invite to board</button>
+      </form>
+      <p class="parse-err" id="grant-err" hidden role="alert"></p>
+      <p class="sr-only" id="grant-live" aria-live="polite"></p>
+      <ul class="grant-list" id="grant-list"></ul>
+
+      <section class="mcp-panel" id="mcp-panel" aria-labelledby="mcp-title">
+        <h2 id="mcp-title">MCP key</h2>
+        <p class="lead" id="mcp-hint">Create a key to hook Cursor or Claude to this board via MCP.</p>
+        <label class="sr-only" for="mcp-secret">MCP key</label>
+        <input id="mcp-secret" class="mcp-secret" type="text" readonly hidden autocomplete="off" spellcheck="false">
+        <div class="mcp-actions">
+          <button type="button" class="btn" id="mcp-create">Create MCP key</button>
+          <button type="button" class="btn" id="mcp-copy" hidden>Copy</button>
+          <button type="button" class="btn ghost" id="mcp-reset" hidden>Reset key</button>
+        </div>
+        <div class="mcp-confirm" id="mcp-confirm" hidden>
+          <p>Reset this key? The old key stops working immediately. The new key is shown once. We do not email it.</p>
+          <div class="mcp-actions">
+            <button type="button" class="btn ghost" id="mcp-reset-no">Cancel</button>
+            <button type="button" class="btn" id="mcp-reset-yes">Reset key</button>
+          </div>
+        </div>
+        <p class="sr-only" id="mcp-live" aria-live="polite"></p>
+      </section>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-people" hidden role="main" aria-labelledby="people-title">
+    <div class="sheet">
+      <a href="#/" class="back">Back to board</a>
+      <h1 id="people-title">People</h1>
+      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Request access on the homepage only adds a Clerk waitlist entry. Board invites are email-only and do not create a Clerk account.</p>
+      <form class="create" id="app-invite-form">
+        <label class="sr-only" for="app-invite-email">Email</label>
+        <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
+        <button type="submit" class="btn">Invite to app</button>
+      </form>
+      <p class="parse-err" id="app-invite-err" hidden role="alert"></p>
+      <p class="sr-only" id="app-invite-live" aria-live="polite"></p>
+      <h2 class="people-h">All users</h2>
+      <ul class="grant-list" id="user-list"></ul>
+      <h2 class="people-h">Boards by user</h2>
+      <div id="boards-by-user"></div>
+    </div>
+  </section>
+
   <section class="screen gate-screen splash" id="screen-splash" role="main" aria-labelledby="splash-title">
     <header class="splash-bar">
       <a class="wordmark splash-wordmark" href="/" aria-label="Data Based">
@@ -63,7 +212,7 @@
         </form>
         <p class="splash-ok" id="waitlist-ok" hidden role="status"></p>
         <p class="parse-err" id="who-err" hidden role="alert"></p>
-        <p class="splash-note">Request access adds your email to our waitlist. Marco invites from People; then Sign in with Google opens the boards. Sharing a board is not product access.</p>
+        <p class="splash-note">Request access puts you on the Clerk waitlist. Marco enables that email in Clerk; then Sign in with Google. Sharing a board is not product access.</p>
       </div>
 
       <figure class="splash-stage" aria-hidden="true">
@@ -106,6 +255,77 @@
     </div>
   </section>
 
-  <script src="/js/access.js"></script>
+  <section class="screen gate-screen" id="screen-denied" hidden role="main" aria-labelledby="denied-title">
+    <div class="sheet">
+      <h1 id="denied-title">You don’t have access</h1>
+      <p class="lead">This product is invite-only. A board invite is not enough. Reach out to <a id="denied-mail" href="mailto:marcode.chavez.jr@gmail.com">marcode.chavez.jr@gmail.com</a> and ask to be granted app access.</p>
+      <button type="button" class="btn ghost" id="denied-sign-out">Sign out</button>
+    </div>
+  </section>
+
+  <div class="veil hidden" id="veil" hidden>
+    <aside class="market" id="market" role="dialog" aria-modal="true" aria-labelledby="market-title" aria-describedby="market-lead" tabindex="-1">
+      <header class="market-head">
+        <h2 id="market-title">Marketplace</h2>
+        <button type="button" class="text-btn" id="market-close">Close</button>
+      </header>
+      <p class="market-lead" id="market-lead">Click an app to put it on the board.</p>
+      <div class="market-body" id="market-body"></div>
+    </aside>
+  </div>
+
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+
+  <dialog class="modal" id="edit" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+    <form method="dialog" class="modal-form" id="edit-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="edit-title">Edit</h2>
+          <p id="edit-kind"></p>
+        </div>
+        <p class="parse-err" id="parse-err" hidden role="alert" aria-live="assertive"></p>
+      </header>
+      <div class="modal-body" id="edit-body"></div>
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" id="edit-cancel">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </footer>
+    </form>
+    <ul class="combo-pop" id="combo-pop" role="listbox" hidden></ul>
+  </dialog>
+
+  <dialog class="modal export-modal" id="export" aria-labelledby="export-title">
+    <form method="dialog" class="modal-form" id="export-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="export-title">Export agent prompt</h2>
+          <p id="export-lead">Paste into Cursor, Claude, or Codex outside this app.</p>
+        </div>
+        <p class="sr-only" id="export-live" aria-live="polite"></p>
+      </header>
+      <div class="modal-body">
+        <label class="sr-only" for="export-text">Agent prompt</label>
+        <textarea id="export-text" class="export-text" readonly spellcheck="false"></textarea>
+      </div>
+      <footer class="modal-foot">
+        <button type="submit" class="btn ghost" id="export-close">Close</button>
+        <button type="button" class="btn ghost" id="export-download">Download .md</button>
+        <button type="button" class="btn" id="export-copy">Copy</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="js/persist.js"></script>
+  <script src="js/access.js"></script>
+  <script src="js/boards.js"></script>
+  <script src="highlight.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/select.js"></script>
+  <script src="js/flow.js"></script>
+  <script src="app.js"></script>
+  <script src="js/menu.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/mcp-keys.js"></script>
+  <script src="js/sync.js"></script>
 </body>
 </html>
