@@ -83,21 +83,30 @@ h1, h2, h3, p { margin: 0; }
 
 .board {
   height: 100%;
-  overflow: auto;
-}
-.world {
-  position: relative;
-  width: 3600px;
-  height: 2600px;
-}
-.canvas {
-  position: relative;
-  width: 3600px;
-  height: 2600px;
-  transform-origin: 0 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
   background-color: var(--field);
   background-image: radial-gradient(var(--dot) 1.1px, transparent 1.2px);
   background-size: 20px 20px;
+}
+.world {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+.canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3600px;
+  height: 2600px;
+  overflow: visible;
+  transform-origin: 0 0;
+  touch-action: none;
 }
 .canvas.is-pan { cursor: grab; }
 
@@ -643,11 +652,6 @@ textarea {
 }
 .parse-err[hidden], [hidden] { display: none !important; }
 
-.board {
-  touch-action: pan-x pan-y;
-  -webkit-touch-callout: none;
-}
-
 @media (pointer: coarse) {
   .tool {
     width: 44px;
@@ -885,6 +889,18 @@ textarea {
   .tools {
     flex-wrap: nowrap;
     justify-content: center;
+    gap: 0;
+    padding: 4px;
+  }
+  .tool {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+  .tool.zoom-pct {
+    width: auto;
+    min-width: 40px;
+    padding: 0 4px;
   }
   .chrome-share { display: none; }
   .chrome-pop-item.is-phone-share { display: flex; }
@@ -1195,6 +1211,7 @@ body.is-splash {
   height: 100%;
   pointer-events: none;
   z-index: 15;
+  overflow: visible;
 }
 
 .peer-cursor {

@@ -215,6 +215,7 @@ bend PROOF.bend
 - House on the floating tools, or `H`: marketplace with headings and named elements
 - Click an element to place a card
 - Drag a card to move it. A drag does not open edit. Double-click, Edit, or `E` does
+- On a phone, pinch out to zoom in and pinch in to zoom out. Pan has no edge; Re-center jumps back to the cards
 - Prisma, Drizzle, GraphQL, and SQL each edit in that language. Spreadsheet fields and the highlighted source stay in sync. Types are a combobox: pick or type a custom value
 - Effect cards have Input type, Output type, and Effects in the box
 - Table cards carry a `+` that adds a next-kind card and one arrow. The same card can grow many arrows. Drag a port onto another card to share a module. Notes are not in that helper.

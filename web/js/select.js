@@ -110,11 +110,19 @@
       }
     }
 
+    function releaseCapture(id) {
+      if (id == null) return;
+      try { canvas.releasePointerCapture(id); } catch (_) {}
+      try { scroller.releasePointerCapture(id); } catch (_) {}
+    }
+
     function onPointerDown(ev) {
       if (blocked()) return;
       if (ev.button != null && ev.button !== 0) return;
+      if (root.Camera && typeof root.Camera.isPinching === "function" && root.Camera.isPinching()) return;
       if (session && session.pointerId != null && ev.pointerId !== session.pointerId) {
         hideMarquee();
+        releaseCapture(session.pointerId);
         session = null;
         state.dragged = false;
         return;
@@ -136,13 +144,16 @@
       }
 
       if (panning()) {
+        const p = (root.Camera && typeof root.Camera.pan === "function")
+          ? root.Camera.pan()
+          : ((state.camera && state.camera.pan) || { x: 0, y: 0 });
         session = {
           kind: "pan",
           pointerId: ev.pointerId,
           x: ev.clientX,
           y: ev.clientY,
-          sl: scroller.scrollLeft,
-          st: scroller.scrollTop,
+          panX: p.x,
+          panY: p.y,
         };
         try { scroller.setPointerCapture(ev.pointerId); } catch (_) {}
         return;
@@ -215,8 +226,15 @@
       if (!session) return;
       if (session.pointerId != null && ev.pointerId !== session.pointerId) return;
       if (session.kind === "pan") {
-        scroller.scrollLeft = session.sl - (ev.clientX - session.x);
-        scroller.scrollTop = session.st - (ev.clientY - session.y);
+        const z = zoomOf(state);
+        const nx = session.panX - (ev.clientX - session.x) / z;
+        const ny = session.panY - (ev.clientY - session.y) / z;
+        if (root.Camera && typeof root.Camera.setPan === "function") {
+          root.Camera.setPan(nx, ny, false);
+        } else if (scroller) {
+          scroller.scrollLeft = session.panX * z - (ev.clientX - session.x);
+          scroller.scrollTop = session.panY * z - (ev.clientY - session.y);
+        }
         return;
       }
       const dx = ev.clientX - session.x;
@@ -242,8 +260,8 @@
         for (const o of session.origins) {
           const card = state.cards.find((c) => c.id === o.id);
           if (!card) continue;
-          card.x = Math.max(8, o.left + dx / z);
-          card.y = Math.max(8, o.top + dy / z);
+          card.x = o.left + dx / z;
+          card.y = o.top + dy / z;
         }
         paintMoved(session.ids);
         if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.broadcastDrag === "function") {
@@ -271,7 +289,7 @@
         if (!session.armed && !session.additive) setSelection([]);
         hideMarquee();
       }
-      if (session.kind === "move" || session.kind === "resize") {
+      if (session.kind === "pan" || session.kind === "move" || session.kind === "resize") {
         const saved = persist({ flush: true });
         if (root.DataBasedSync && typeof root.DataBasedSync.noteLocal === "function") {
           try {
@@ -292,6 +310,7 @@
     function abortGesture() {
       if (!session) return;
       hideMarquee();
+      releaseCapture(session.pointerId);
       session = null;
       state.dragged = false;
       state.drag = null;
@@ -303,7 +322,7 @@
       ev.preventDefault();
     });
 
-    canvas.addEventListener("pointerdown", onPointerDown);
+    scroller.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
