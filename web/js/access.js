@@ -229,15 +229,28 @@
       .catch(() => null);
   }
 
-  function clerkScriptUrl(pk) {
+  function clerkFrontendHost(pk) {
     try {
       const encoded = String(pk || "").replace(/^pk_(test|live)_/, "");
       const pad = "=".repeat((4 - (encoded.length % 4)) % 4);
       const host = atob(encoded + pad).replace(/\$$/, "").trim();
-      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) {
-        return "https://" + host + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
-      }
+      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
     } catch (_) {}
+    return "";
+  }
+
+  function clerkOwnsNpm(host) {
+    return /(^|\.)clerk\.accounts\.dev$/i.test(host)
+      || /^clerk\.shared\.lcl\.dev$/i.test(host)
+      || /(^|\.)lclclerk\.com$/i.test(host)
+      || /(^|\.)clerk\.services$/i.test(host);
+  }
+
+  function clerkScriptUrl(pk) {
+    const host = clerkFrontendHost(pk);
+    if (host && clerkOwnsNpm(host)) {
+      return "https://" + host + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
+    }
     return CLERK_JS;
   }
 
@@ -245,7 +258,6 @@
     if (global.Clerk) return Promise.resolve();
     global.__clerk_publishable_key = pk;
     return new Promise((resolve, reject) => {
-      const existing = document.querySelector("script[data-clerk-js]");
       let settled = false;
       const done = function () {
         if (settled) return;
@@ -257,9 +269,15 @@
         settled = true;
         reject(new Error("Clerk JS failed to download"));
       };
-      if (existing) {
-        existing.addEventListener("load", done);
-        existing.addEventListener("error", fail);
+      function watch(el) {
+        el.addEventListener("load", done);
+        el.addEventListener("error", function () {
+          if (el.src === CLERK_JS) {
+            fail();
+            return;
+          }
+          el.src = CLERK_JS;
+        });
         let n = 0;
         const t = setInterval(function () {
           if (global.Clerk) {
@@ -270,6 +288,10 @@
             fail();
           }
         }, 50);
+      }
+      const existing = document.querySelector("script[data-clerk-js]");
+      if (existing) {
+        watch(existing);
         return;
       }
       const s = document.createElement("script");
@@ -279,8 +301,7 @@
       s.fetchPriority = "high";
       s.dataset.clerkJs = "1";
       s.setAttribute("data-clerk-publishable-key", pk);
-      s.onload = done;
-      s.onerror = fail;
+      watch(s);
       document.head.appendChild(s);
     });
   }

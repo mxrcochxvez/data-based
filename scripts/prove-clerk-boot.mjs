@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = fs.readFileSync(path.join(root, "web/js/access.js"), "utf8");
+const boot = fs.readFileSync(path.join(root, "web/js/clerk-boot.js"), "utf8");
+const splash = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
 
 const must = [
   ["sets data-clerk-publishable-key on the Clerk script before it runs", /setAttribute\(\s*["']data-clerk-publishable-key["']/],
@@ -14,7 +16,8 @@ const must = [
   ["passes transferable on handleRedirectCallback", /handleRedirectCallback\(\s*\{\s*transferable:\s*true/],
   ["explains Clerk Restricted invitations in Development", /Clerk Restricted will not create a user/],
   ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
-  ["loads Clerk JS from the instance frontend API host", /clerkScriptUrl/],
+  ["loads Clerk JS from Clerk-hosted frontend API or jsDelivr", /clerkOwnsNpm/],
+  ["falls back to jsDelivr when the Frontend API is not Clerk-hosted", /cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@5/],
   ["shows splash instead of a Sign in wall", /screen-splash/],
   ["requires a server-verified email before the invite gate", /if \(!session\.verified\)/],
   ["sends Clerk getToken as Authorization Bearer", /Authorization\s*=\s*["']Bearer /],
@@ -22,6 +25,7 @@ const must = [
   ["sends cookies on access fetches", /credentials:\s*["']same-origin["']/],
 ];
 const forbidden = [
+  ["hardcodes loyal-lionfish Development Frontend API", "loyal-lionfish"],
   ["blames a missing key after Clerk JS fails", "Clerk failed to load. Check CLERK_PUBLISHABLE_KEY."],
   ["blames a missing key on the Google button", "Clerk is not ready. Set CLERK_PUBLISHABLE_KEY and refresh."],
   ["treats the browser Clerk email as server-verified", "session.email = data.email || handle()"],
@@ -55,5 +59,12 @@ const restrictedSample = "sign_up_restricted: Sign-ups are restricted";
 const restrictedOk = restrictedRe.test(restrictedSample);
 console.log(restrictedOk ? "pass" : "fail", "Restricted sign-up errors map to invite copy");
 if (!restrictedOk) failed += 1;
+
+const bootOk = /clerkOwnsNpm/.test(boot) && boot.includes("cdn.jsdelivr.net/npm/@clerk/clerk-js@5");
+console.log(bootOk ? "pass" : "fail", "clerk-boot skips satellite vercel.app npm hosts");
+if (!bootOk) failed += 1;
+const splashOk = !splash.includes("clerk.shared.lcl.dev");
+console.log(splashOk ? "pass" : "fail", "splash does not preconnect clerk.shared.lcl.dev");
+if (!splashOk) failed += 1;
 
 if (failed) process.exit(1);
