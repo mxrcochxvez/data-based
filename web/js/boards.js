@@ -186,12 +186,27 @@
     const access = global.DataBasedAccess;
     const list = $("user-list");
     const groups = $("boards-by-user");
+    const wait = $("waitlist-list");
     if (!access || !access.isSystem()) {
       if (list) list.innerHTML = "";
+      if (wait) wait.innerHTML = "";
       if (groups) groups.innerHTML = "<p class=\"lead\">Only the system user can see this directory.</p>";
       return;
     }
-    Promise.all([access.users(), access.boards()]).then(([usersDoc, boardsDoc]) => {
+    const waitlistFetch = access.waitlist
+      ? access.waitlist().catch(() => ({ waitlist: [] }))
+      : Promise.resolve({ waitlist: [] });
+    Promise.all([access.users(), access.boards(), waitlistFetch]).then(([usersDoc, boardsDoc, waitDoc]) => {
+      if (wait) {
+        const rows = waitDoc.waitlist || [];
+        wait.innerHTML = rows.length ? rows.map((w) => `
+          <li>
+            <span>${esc(w.email)}</span>
+            <span class="role">${esc(w.status || "pending")}</span>
+            ${w.status === "invited" ? "" : `<button type="button" class="text-btn" data-waitlist-invite="${esc(w.email)}">Invite</button>`}
+          </li>
+        `).join("") : "<li><span class=\"role\">No requests yet</span></li>";
+      }
       if (list) {
         list.innerHTML = (usersDoc.users || []).map((u) => `
           <li>
@@ -224,6 +239,7 @@
       }
     }).catch(() => {
       if (list) list.innerHTML = "";
+      if (wait) wait.innerHTML = "";
       if (groups) groups.innerHTML = "<p class=\"lead\">Could not load the directory.</p>";
     });
   }
@@ -417,6 +433,17 @@
         if (invite) {
           access.inviteApp(invite.dataset.appInvite).then(() => renderPeople());
         }
+      });
+    }
+
+    const waitlist = $("waitlist-list");
+    if (waitlist) {
+      waitlist.addEventListener("click", (ev) => {
+        const access = global.DataBasedAccess;
+        if (!access) return;
+        const invite = ev.target.closest("[data-waitlist-invite]");
+        if (!invite) return;
+        access.inviteApp(invite.dataset.waitlistInvite).then(() => renderPeople());
       });
     }
 

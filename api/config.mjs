@@ -15,7 +15,6 @@ export default async function handler(req, res) {
     res.end(JSON.stringify({ error: "method not allowed" }));
     return;
   }
-  await ensureSystemClerkUser();
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
@@ -25,4 +24,5 @@ export default async function handler(req, res) {
     systemEnv: Boolean(systemEmail()),
     systemHint: systemEnvHint(),
   }));
+  void ensureSystemClerkUser();
 }

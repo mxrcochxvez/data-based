@@ -9,6 +9,7 @@ const must = [
   ["sets data-clerk-publishable-key on the Clerk script before it runs", /setAttribute\(\s*["']data-clerk-publishable-key["']/],
   ["sets window.__clerk_publishable_key before loading Clerk JS", /__clerk_publishable_key/],
   ["starts first Google with client.signUp.authenticateWithRedirect", /signUp\.authenticateWithRedirect/],
+  ["shows Opening Google while Clerk JS finishes", /Opening Google/],
   ["recovers external_account_not_found by transferring to sign-up", /external_account_not_found/],
   ["passes transferable on handleRedirectCallback", /handleRedirectCallback\(\s*\{\s*transferable:\s*true/],
   ["explains Clerk Restricted invitations in Development", /Clerk Restricted will not create a user/],
@@ -25,6 +26,7 @@ const forbidden = [
   ["blames a missing key on the Google button", "Clerk is not ready. Set CLERK_PUBLISHABLE_KEY and refresh."],
   ["treats the browser Clerk email as server-verified", "session.email = data.email || handle()"],
   ["starts Google with sign-in only", "function googleRedirect(clerk)"],
+  ["blocks the Google click on Clerk still loading", "Clerk is still starting. Try again in a moment."],
 ];
 
 let failed = 0;

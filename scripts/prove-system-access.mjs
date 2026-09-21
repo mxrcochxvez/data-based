@@ -71,9 +71,9 @@ assert.equal(systemEmail(), "");
 assert.match(systemEnvHint(), /SYSTEM_USER_EMAIL is not set/);
 const missing = sessionPayload({ users: [] }, "marcode.chavez.jr@gmail.com");
 assert.equal(missing.systemEnv, false);
-assert.equal(missing.isSystem, false);
+assert.equal(missing.isSystem, true);
+assert.equal(missing.hasAppAccess, true);
 assert.match(missing.systemHint, /SYSTEM_USER_EMAIL is not set/);
-if (missing.acl) assert.equal(missing.hasAppAccess, false);
 
 const {
   emailsFromClaims,

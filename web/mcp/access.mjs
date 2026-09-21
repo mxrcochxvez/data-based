@@ -5,7 +5,6 @@ import {
   clerkConfigured,
   clerkIdentityFromRequest,
   inviteClerkEmail,
-  requestClerkAccess,
 } from "./clerk.mjs";
 
 export const CONTACT_FALLBACK = "marcode.chavez.jr@gmail.com";
@@ -45,7 +44,7 @@ export function pickIdentityEmail(emails) {
   for (const e of list) {
     if (!seen.includes(e)) seen.push(e);
   }
-  const sys = systemEmail();
+  const sys = operatorEmail();
   if (sys) {
     const hit = seen.find((e) => emailsMatch(e, sys));
     if (hit) return hit;
@@ -57,17 +56,21 @@ export function systemEmail() {
   return normalizeEmail(process.env.SYSTEM_USER_EMAIL || process.env.DATABSED_SYSTEM_EMAIL || "");
 }
 
-export function contactEmail() {
+export function operatorEmail() {
   return systemEmail() || CONTACT_FALLBACK;
+}
+
+export function contactEmail() {
+  return operatorEmail();
 }
 
 export function systemEnvHint() {
   if (systemEmail()) return "";
-  return "SYSTEM_USER_EMAIL is not set on this server environment. Nobody is the system operator until it is set and the app is redeployed.";
+  return "SYSTEM_USER_EMAIL is not set on this server environment. The operator fallback is " + CONTACT_FALLBACK + ".";
 }
 
 export function isSystemHandle(handle) {
-  const sys = systemEmail();
+  const sys = operatorEmail();
   return Boolean(sys && emailsMatch(handle, sys));
 }
 
@@ -75,7 +78,7 @@ let ensuredSystem = false;
 
 export async function ensureSystemClerkUser() {
   if (ensuredSystem) return { skipped: true };
-  const email = systemEmail();
+  const email = operatorEmail();
   if (!email || !clerkConfigured()) return { invited: false, skipped: true };
   ensuredSystem = true;
   return inviteClerkEmail(email);
@@ -91,13 +94,49 @@ function uid() {
 }
 
 function emptyAccess() {
-  return { users: [] };
+  return { users: [], waitlist: [] };
+}
+
+function waitlistOf(doc) {
+  return Array.isArray(doc && doc.waitlist) ? doc.waitlist : [];
+}
+
+function findWaitlist(doc, email) {
+  const id = normalizeEmail(email);
+  return waitlistOf(doc).find((row) => emailsMatch(row.email, id)) || null;
+}
+
+function publicWaitlist(row) {
+  return {
+    email: row.email,
+    status: row.status === "invited" ? "invited" : "pending",
+    requestedAt: row.requestedAt || 0,
+    invitedAt: row.invitedAt || 0,
+  };
+}
+
+function markWaitlistInvited(doc, email, now) {
+  const row = findWaitlist(doc, email);
+  if (!row) return;
+  row.status = "invited";
+  row.invitedAt = now;
+}
+
+export function listWaitlist(doc) {
+  return waitlistOf(doc).slice().sort((a, b) => {
+    const rank = (row) => (row.status === "invited" ? 1 : 0);
+    const byStatus = rank(a) - rank(b);
+    if (byStatus) return byStatus;
+    return (b.requestedAt || 0) - (a.requestedAt || 0);
+  }).map(publicWaitlist);
 }
 
 export async function readAccess(dataDir) {
   try {
     const raw = await getJson("access", dataDir);
-    if (raw && Array.isArray(raw.users)) return { users: raw.users };
+    if (raw && Array.isArray(raw.users)) {
+      return { users: raw.users, waitlist: waitlistOf(raw) };
+    }
   } catch (e) {
     if (e && e.status === 503) throw e;
   }
@@ -105,9 +144,57 @@ export async function readAccess(dataDir) {
 }
 
 async function writeAccess(dataDir, doc) {
-  const next = { users: Array.isArray(doc.users) ? doc.users : [] };
+  const next = {
+    users: Array.isArray(doc.users) ? doc.users : [],
+    waitlist: waitlistOf(doc),
+  };
   await setJson("access", dataDir, next);
   return next;
+}
+
+export async function enqueueWaitlist(dataDir, email) {
+  const id = normalizeEmail(email);
+  if (!looksLikeEmail(id)) {
+    return { ok: false, error: "invalid_email", message: "Enter a valid email." };
+  }
+  try {
+    const doc = await readAccess(dataDir);
+    const existing = findWaitlist(doc, id);
+    if (existing) {
+      return {
+        ok: false,
+        error: "already_waitlisted",
+        message: "That email is already on the waitlist.",
+        status: existing.status === "invited" ? "invited" : "pending",
+      };
+    }
+    if (isSystemHandle(id) || hasAppAccess(doc, id)) {
+      return {
+        ok: false,
+        error: "already_user",
+        message: "That email already has access. Use Sign in with Google.",
+      };
+    }
+    const now = Date.now();
+    doc.waitlist.push({
+      id: uid(),
+      email: id,
+      status: "pending",
+      requestedAt: now,
+      invitedAt: 0,
+    });
+    await writeAccess(dataDir, doc);
+    return { ok: true, via: "store", status: "pending" };
+  } catch (e) {
+    if (e && e.status === 503) {
+      return {
+        ok: false,
+        error: "store_unconfigured",
+        message: "The waitlist could not be stored. This server has no durable store.",
+      };
+    }
+    throw e;
+  }
 }
 
 export function findAccessUser(doc, email) {
@@ -203,6 +290,7 @@ export async function grantAppAccess(dataDir, email, actor) {
     row.revokedAt = 0;
     row.grantedBy = actor || row.grantedBy || "";
   }
+  markWaitlistInvited(doc, id, now);
   await writeAccess(dataDir, doc);
   return publicUser(row);
 }
@@ -249,11 +337,7 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   const path = accessPath(req);
   const isWaitlist = path === "/api/access/waitlist" || /\/waitlist$/.test(path);
 
-  if (isWaitlist) {
-    if (req.method !== "POST") {
-      send(res, 405, { error: "method not allowed" });
-      return;
-    }
+  if (isWaitlist && req.method === "POST") {
     let body = {};
     try {
       body = bodyText ? JSON.parse(bodyText) : {};
@@ -266,10 +350,10 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
       send(res, 400, { error: "invalid_email", message: "Enter a valid email." });
       return;
     }
-    const result = await requestClerkAccess(email);
+    const result = await enqueueWaitlist(dataDir, email);
     const status = result.ok ? 200
-      : result.error === "invalid_email" ? 400
-      : result.error === "clerk_unconfigured" || result.error === "clerk_unreachable" || result.error === "clerk_auth" ? 503
+      : result.error === "already_waitlisted" ? 409
+      : result.error === "store_unconfigured" ? 503
       : 400;
     send(res, status, result);
     return;
@@ -278,9 +362,9 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
   const ident = await identityDetailsFromReq(req);
   const handle = ident.email || "";
   const doc = await readAccess(dataDir);
-  await ensureSystemClerkUser();
 
   const isMe = path === "/api/access" || path === "/api/access/" || path === "/api/access/me";
+  if (!isMe) await ensureSystemClerkUser();
   const isUsers = path === "/api/access/users" || /\/users$/.test(path) || url.searchParams.get("users") === "1";
   const isBoards = path === "/api/access/boards" || /\/boards$/.test(path) || url.searchParams.get("boards") === "1";
   const isInvite = path === "/api/access/invite" || /\/invite$/.test(path);
@@ -292,12 +376,12 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
     clerkUserId: ident.userId,
   };
 
-  if (req.method === "GET" && isMe && !isUsers && !isBoards) {
+  if (req.method === "GET" && isMe && !isUsers && !isBoards && !isWaitlist) {
     send(res, 200, sessionPayload(doc, handle, meExtra));
     return;
   }
 
-  if (req.method === "GET" && !isUsers && !isBoards && !isInvite && !isRevoke) {
+  if (req.method === "GET" && !isUsers && !isBoards && !isInvite && !isRevoke && !isWaitlist) {
     send(res, 200, sessionPayload(doc, handle, meExtra));
     return;
   }
@@ -314,6 +398,11 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
 
   if (!isSystemHandle(handle)) {
     send(res, 403, { error: "forbidden", contactEmail: contactEmail() });
+    return;
+  }
+
+  if (req.method === "GET" && isWaitlist) {
+    send(res, 200, { waitlist: listWaitlist(doc), contactEmail: contactEmail() });
     return;
   }
 
