@@ -318,6 +318,7 @@ body.is-comments .hint { visibility: hidden; }
   row-gap: 2px;
   margin: 0;
   padding: 0 4px;
+  scroll-margin-bottom: 12px;
 }
 .comment-note-face {
   grid-area: face;

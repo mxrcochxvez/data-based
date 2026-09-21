@@ -26,6 +26,7 @@ function loadCommentsStore() {
   const threads = new Map();
   const sandbox = {
     threads,
+    pendingIds: new Set(),
     commentsSince: null,
     Date,
     Map,
@@ -53,7 +54,6 @@ function loadCommentsStore() {
 
 const created = {
   id: "th_new",
-  _pending: true,
   createdAt: new Date("2026-09-21T08:00:00.000Z"),
   updatedAt: new Date("2026-09-21T08:00:00.000Z"),
   metadata: { x: 12, y: 40, cardId: "" },
@@ -95,6 +95,11 @@ assert.equal(
   store.threads.get("th_new").comments[0].id,
   "cm_new",
   "created comment body stays until Liveblocks catches up",
+);
+assert.equal(
+  store.commentsSince,
+  null,
+  "stale snapshot must not advance commentsSince past the missing thread",
 );
 
 store.mergeLocalComment("th_old", {
