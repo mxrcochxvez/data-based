@@ -58,10 +58,10 @@
     localStorage.setItem(KEY, raw);
   }
 
-  function kickSync() {
+  function kickSync(doc) {
     const sync = global.DataBasedSync;
     try {
-      if (sync && typeof sync.noteLocal === "function") sync.noteLocal();
+      if (sync && typeof sync.noteLocal === "function") sync.noteLocal(doc);
       if (sync && typeof sync.kick === "function") sync.kick();
       else if (sync && typeof sync.push === "function") sync.push();
     } catch (_) {}
@@ -253,7 +253,7 @@
           throw err;
         }
       }
-      kickSync();
+      kickSync(next);
       return next;
     },
 
