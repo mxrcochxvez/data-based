@@ -144,6 +144,38 @@
     }
   }
 
+  function activateSession(clerk) {
+    if (!clerk || clerkSessionPresent()) return Promise.resolve(clerk);
+    const sessions = clerk.client && clerk.client.sessions;
+    const sid = (clerk.client && clerk.client.lastActiveSessionId)
+      || (sessions && sessions[0] && sessions[0].id);
+    if (sid && typeof clerk.setActive === "function") {
+      return clerk.setActive({ session: sid }).then(function () { return clerk; }).catch(function () { return clerk; });
+    }
+    return Promise.resolve(clerk);
+  }
+
+  function waitForSession(clerk, ms) {
+    if (clerkSessionPresent()) return Promise.resolve(clerk);
+    return new Promise(function (resolve) {
+      let settled = false;
+      const done = function () {
+        if (settled) return;
+        settled = true;
+        resolve(clerk);
+      };
+      const t = setTimeout(done, ms || 400);
+      if (clerk && typeof clerk.addListener === "function") {
+        clerk.addListener(function (res) {
+          if (res && (res.user || res.session)) {
+            clearTimeout(t);
+            done();
+          }
+        });
+      }
+    });
+  }
+
   function oauthBounce() {
     return /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(String(location.href));
   }
@@ -606,12 +638,10 @@
     }
     return startGoogleOAuth(clerk, true).catch(function (err) {
       if (isRestrictedSignUp(err)) {
-        if (err) {
-          const box = $("who-err");
-          if (box) {
-            box.hidden = false;
-            box.textContent = restrictedMessage();
-          }
+        const box = $("who-err");
+        if (box) {
+          box.hidden = false;
+          box.textContent = restrictedMessage();
         }
         return;
       }
@@ -735,7 +765,9 @@
                   if (res && res.user && session.ready && (session.denied || !session.hasAppAccess)) afterSession();
                 });
               }
-              if (!ready.user) {
+              return activateSession(ready).then(function (live) {
+                return waitForSession(live, onAppPage() ? 2500 : 400).then(function () {
+              if (!clerkSessionPresent()) {
                 const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
                 if (bouncedGoogle && clerkFail) {
                   showWho(clerkFail);
@@ -754,6 +786,8 @@
                 return false;
               }
               return afterSession();
+                });
+              });
             });
           }).catch(function (err) {
             const detail = err && err.message ? String(err.message) : "";

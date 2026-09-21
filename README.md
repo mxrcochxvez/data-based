@@ -38,7 +38,7 @@ After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>
 3. **Configure → Restrictions** (or **User & authentication → Restrictions**): set sign-up to **Restricted** so only invited emails can join. Keep public sign-up off.
 4. Do **not** turn on Clerk Waitlist. Request access writes emails into our access store (same KV as boards).
 5. Disable email/password if you want Google-only.
-6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`). Allow redirects to `/` and `/app`. These are **application origins**, not the Frontend API.
+6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the production app URL (`https://data-based-app.vercel.app`). Allow redirects to `/` and `/app`. These are **application origins**, not the Frontend API. Do not set Frontend API to `clerk.*.vercel.app`.
 7. **Production Frontend API**: do **not** set a satellite, proxy, or DNS target on `*.vercel.app`. `clerk.*.vercel.app` is not a Clerk Frontend API (browser calls to `/v1/environment` and `/v1/client` fail with `ERR_CONNECTION_CLOSED`). Use Clerk’s default FAPI (`something.clerk.accounts.dev` on the API keys page). If a satellite was added, remove it and copy the default Frontend API host.
 8. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only. If the publishable key still decodes to a `*.vercel.app` host, set `CLERK_FRONTEND_API` to the Clerk-owned host from step 7 (Vercel Production env). Redeploy.
 9. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
@@ -189,7 +189,7 @@ Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`), `CLERK_PUBLISHABLE_KEY`, a
 
 ### Open Graph / share image
 
-`web/index.html` sets `og:image` to `/og.png` (`web/og.png`, 1200×630 wordmark on the cool-gray board). Path-relative URLs work on a Vercel deploy. Some crawlers need an absolute URL: set `PUBLIC_ORIGIN` to the production origin (no trailing slash), e.g. `https://your-deployment.vercel.app`. Do not invent a live domain. The static prepare step (`scripts/prepare-vercel-static.mjs`) prefixes `og:url` and `og:image` when that env is present at build.
+`web/index.html` sets `og:image` to `/og.png` (`web/og.png`, 1200×630 wordmark on the cool-gray board). Path-relative URLs work on a Vercel deploy. Some crawlers need an absolute URL: set `PUBLIC_ORIGIN` to `https://data-based-app.vercel.app` (no trailing slash).
 
 MCP keys and ingest snapshots use the same backend (`mcp-keys` / `ingests` keys), not a gitignored file on the serverless filesystem.
 

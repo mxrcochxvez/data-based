@@ -33,6 +33,7 @@ const forbidden = [
   ["treats the browser Clerk email as server-verified", "session.email = data.email || handle()"],
   ["starts Google with sign-in only", "function googleRedirect(clerk)"],
   ["blocks the Google click on Clerk still loading", "Clerk is still starting. Try again in a moment."],
+  ["opens Google in a popup", "authenticateWithPopup"],
 ];
 
 let failed = 0;

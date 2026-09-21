@@ -16,6 +16,8 @@ const must = [
   [app, "boards page has in-app chrome", /id="chrome-brand"/],
   [access, "OAuth handshake uses splash origin", /redirectUrl:\s*splash/],
   [access, "OAuth complete may land on /app", /redirectUrlComplete:\s*app/],
+  [access, "Google uses Clerk authenticateWithRedirect", /authenticateWithRedirect/],
+  [access, "Google is a full-page redirect, not a popup", /signUp\.authenticateWithRedirect/],
   [access, "Clerk session leaves splash before server verify", /if \(!onAppPage\(\)\)/],
   [access, "verified session navigates to /app", /function goApp\(/],
   [vercel, "rewrites /app to app.html", /"source":\s*"\/app"[\s\S]*"destination":\s*"\/app\.html"/],
@@ -25,6 +27,8 @@ const must = [
 const forbidden = [
   [splash, "splash must not mount the live canvas", 'id="canvas"'],
   [access, "must not wait on splash for SYSTEM_USER_EMAIL before leaving", "Nobody can be the system operator until it is set on this Vercel environment"],
+  [access, "must not open Google in a popup", "authenticateWithPopup"],
+  [access, "must not window.open a Google popup", "window.open("],
   [vercel, "must not swallow /api/sync", '"source": "/api/sync"'],
 ];
 

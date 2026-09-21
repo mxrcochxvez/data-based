@@ -15,6 +15,7 @@ const must = [
   [app, "canvas lives at /app", /id="canvas"/],
   [app, "app wordmark points at /app", /href="\/app"/],
   [access, "Google complete may return to /app", /redirectUrlComplete:\s*app/],
+  [access, "Google uses a full-page redirect", /authenticateWithRedirect/],
   [access, "allowed session leaves splash", /function goApp\(/],
   [vercel, "Vercel rewrite for /app", /"source":\s*"\/app"/],
   [server, "local server maps /app", /cleaned === "\/app"/],
@@ -22,6 +23,7 @@ const must = [
 
 const forbidden = [
   [splash, "splash must not mount the live canvas", 'id="canvas"'],
+  [access, "must not open Google in a popup", "authenticateWithPopup"],
   [vercel, "must not swallow /api/sync", '"source": "/api/sync"'],
   [vercel, "must not swallow /mcp", '"source": "/mcp", "destination": "/app'],
 ];
