@@ -243,6 +243,8 @@ function normalizeCard(c) {
 }
 
 function hydrateBoard(b) {
+  if (window.DataBasedSelect && typeof window.DataBasedSelect.isDragging === "function" && window.DataBasedSelect.isDragging()) return;
+  if (state.dragged || state.drag) return;
   store.currentId = b.id;
   state.cards = (b.cards || []).map(normalizeCard);
   state.nextId = b.nextId || 1;
@@ -290,8 +292,13 @@ function persistDoc() {
     : doc;
 }
 
-function persist() {
+function persist(opts) {
+  const flushNow = Boolean(opts && opts.flush);
   if (window.Persist && typeof window.Persist.schedule === "function") {
+    if (flushNow && typeof window.Persist.flush === "function") {
+      window.Persist.flush(persistDoc);
+      return;
+    }
     window.Persist.schedule(persistDoc);
     return;
   }

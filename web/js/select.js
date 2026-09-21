@@ -163,6 +163,7 @@
           w: card.w,
           h: card.h,
         };
+        state.drag = session;
         try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
         return;
       }
@@ -190,6 +191,7 @@
           }).filter(Boolean),
           armed: false,
         };
+        state.drag = session;
         try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
         return;
       }
@@ -270,7 +272,10 @@
         hideMarquee();
       }
       if (session.kind === "move" || session.kind === "resize") {
-        persist();
+        persist({ flush: true });
+        if (root.DataBasedSync && typeof root.DataBasedSync.noteLocal === "function") {
+          try { root.DataBasedSync.noteLocal(); } catch (_) {}
+        }
         if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.broadcastSync === "function") {
           root.DataBasedLiveblocks.broadcastSync();
         }
@@ -328,10 +333,23 @@
       }
     });
 
+    function isDragging() {
+      return Boolean(session && (session.kind === "move" || session.kind === "resize"));
+    }
+
+    function dragIds() {
+      if (!session) return [];
+      if (session.kind === "move") return session.ids || [];
+      if (session.kind === "resize" && session.id != null) return [session.id];
+      return [];
+    }
+
     return {
       selectAll,
       clearSelection: () => setSelection([]),
       isPanning: panning,
+      isDragging,
+      dragIds,
       abortGesture,
     };
   }

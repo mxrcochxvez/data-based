@@ -32,3 +32,12 @@ def Laws.stamp_eq_refl(k):
 
 def Laws.empty_elems_len():
   {==}
+
+def Laws.keep_local_during_move(ox, oy, a, b):
+  {==}
+
+def Laws.keep_local_lww_still():
+  {==}
+
+def Laws.keep_local_older_still():
+  {==}

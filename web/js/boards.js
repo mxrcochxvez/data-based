@@ -99,6 +99,9 @@
   }
 
   function hydrateBoard(b) {
+    const select = global.DataBasedSelect;
+    if (select && typeof select.isDragging === "function" && select.isDragging()) return;
+    if (api && api.state && (api.state.dragged || api.state.drag)) return;
     store.currentId = b.id;
     if (!api) return;
     const cards = (b.cards || []).map((c) => {
@@ -126,9 +129,11 @@
     if (Persist) Persist.flush(snapshot);
   }
 
-  function persist() {
+  function persist(opts) {
     flushBoard();
-    if (Persist) Persist.schedule(snapshot);
+    if (!Persist) return;
+    if (opts && opts.flush) Persist.flush(snapshot);
+    else Persist.schedule(snapshot);
   }
 
   function esc(s) {

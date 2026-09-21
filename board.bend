@@ -43,6 +43,26 @@ type Drag is Data:
   Moving{ox: U32, oy: U32}
   Sizing{id: U32}
 
+# Pointer-drag and a newer local stamp both keep the local board.
+# A remote hydrate with an older updatedAt must not rewind x/y.
+def Drag.holds(+d: Drag) -> Bool:
+  match d:
+    case Still{}:
+      False{}
+    case Moving{ox, oy}:
+      True{}
+    case Sizing{id}:
+      True{}
+
+def Board.keep_local(+d: Drag, +local_at: U32, +remote_at: U32) -> Bool:
+  match d:
+    case Still{}:
+      U32.is_ge(local_at, remote_at)
+    case Moving{ox, oy}:
+      True{}
+    case Sizing{id}:
+      True{}
+
 type Cmd is Data:
   Noop{}
   Place{kind: Stamp, x: U32, y: U32}

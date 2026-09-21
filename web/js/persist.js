@@ -61,6 +61,7 @@
   function kickSync() {
     const sync = global.DataBasedSync;
     try {
+      if (sync && typeof sync.noteLocal === "function") sync.noteLocal();
       if (sync && typeof sync.kick === "function") sync.kick();
       else if (sync && typeof sync.push === "function") sync.push();
     } catch (_) {}

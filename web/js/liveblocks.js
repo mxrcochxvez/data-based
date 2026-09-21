@@ -197,11 +197,47 @@
     renderPeerSelections(others);
   }
 
+  function localDragIds() {
+    const select = window.DataBasedSelect;
+    if (select && typeof select.dragIds === "function") return select.dragIds();
+    return [];
+  }
+
+  function localDragging() {
+    const select = window.DataBasedSelect;
+    if (select && typeof select.isDragging === "function") return select.isDragging();
+    const sync = window.DataBasedSync;
+    if (sync && typeof sync.pointerDragging === "function") return sync.pointerDragging();
+    return false;
+  }
+
+  function applyRemoteCardDrag(cardId, x, y) {
+    const busy = localDragIds().map(String);
+    if (busy.indexOf(String(cardId)) >= 0) return;
+    const cardEl = document.querySelector(`.card[data-id="${cardId}"]`);
+    if (cardEl) {
+      cardEl.style.left = x + "px";
+      cardEl.style.top = y + "px";
+    }
+    const db = window.DB;
+    const cards = db && db.state && Array.isArray(db.state.cards) ? db.state.cards : [];
+    const card = cards.find((c) => c && String(c.id) === String(cardId));
+    if (!card) return;
+    card.x = x;
+    card.y = y;
+    card.left = x;
+    card.top = y;
+    if (typeof db.paintCard === "function") {
+      try { db.paintCard(card); } catch (_) {}
+    }
+  }
+
   function onRemoteEvent(eventData) {
     const event = eventData && eventData.event;
     if (!event || typeof event !== "object") return;
 
     if (event.type === "KICK_SYNC") {
+      if (localDragging()) return;
       if (event.boardId && event.boardId === currentBoardId) {
         if (window.DataBasedSync && typeof window.DataBasedSync.pull === "function") {
           window.DataBasedSync.pull();
@@ -212,11 +248,7 @@
 
     if (event.type === "CARD_DRAG") {
       if (event.boardId && event.boardId === currentBoardId && event.cardId != null) {
-        const cardEl = document.querySelector(`.card[data-id="${event.cardId}"]`);
-        if (cardEl && event.x != null && event.y != null) {
-          cardEl.style.left = event.x + "px";
-          cardEl.style.top = event.y + "px";
-        }
+        if (event.x != null && event.y != null) applyRemoteCardDrag(event.cardId, event.x, event.y);
       }
     }
   }
