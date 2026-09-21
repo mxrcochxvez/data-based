@@ -12,11 +12,11 @@ Static + authed sync (serves `web/` and writes `web/data/store.json`):
 node web/sync-server.mjs
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) for the splash. Boards live at [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app). Default port is `8765` (`PORT` overrides).
+Open [http://127.0.0.1:8765/splash](http://127.0.0.1:8765/splash) for the marketing splash. Boards live at [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Logged-out visits to `/` go to `/splash`. Default port is `8765` (`PORT` overrides).
 
 ### Access control (Clerk + Google)
 
-Sign-in is **Clerk**, **Sign in with Google** only. `/` is the marketing splash with **Request access**. `/app` is the canvas. There is no public self-signup and no Clerk Waitlist product.
+Sign-in is **Clerk**, **Sign in with Google** only. `/splash` is the marketing page with **Request access**. `/` is the canvas. There is no public self-signup and no Clerk Waitlist product.
 
 **Env (names only — never commit values)**
 
@@ -29,7 +29,7 @@ Sign-in is **Clerk**, **Sign in with Google** only. `/` is the marketing splash 
 
 Example operator: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
 
-After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>`. The server verifies it and uses the **JWT email** for ACL. It does not trust a client-supplied email header when Clerk is configured. A verified operator or granted user is sent to `/app`. Logged-out `/app` returns to `/`.
+After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>`. The server verifies it and uses the **JWT email** for ACL. It does not trust a client-supplied email header when Clerk is configured. Google OAuth completes on `/` (the canvas) and a signed-in session stays there. Logged-out `/` returns to `/splash`. `/app` aliases the canvas.
 
 **Clerk dashboard checklist**
 
@@ -38,7 +38,7 @@ After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>
 3. **Configure → Restrictions** (or **User & authentication → Restrictions**): set sign-up to **Restricted** so only invited emails can join. Keep public sign-up off.
 4. Do **not** turn on Clerk Waitlist. Request access writes emails into our access store (same KV as boards).
 5. Disable email/password if you want Google-only.
-6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the production app URL (`https://data-based-app.vercel.app`). Allow redirects to `/` and `/app`. These are **application origins**, not the Frontend API. Do not set Frontend API to `clerk.*.vercel.app`.
+6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the production app URL (`https://data-based-app.vercel.app`). Allow redirects to `/` and `/splash` (`/app` may alias `/`). These are **application origins**, not the Frontend API. Do not set Frontend API to `clerk.*.vercel.app`.
 7. **Production Frontend API**: do **not** set a satellite, proxy, or DNS target on `*.vercel.app`. `clerk.*.vercel.app` is not a Clerk Frontend API (browser calls to `/v1/environment` and `/v1/client` fail with `ERR_CONNECTION_CLOSED`). Use Clerk’s default FAPI (`something.clerk.accounts.dev` on the API keys page). If a satellite was added, remove it and copy the default Frontend API host.
 8. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only. If the publishable key still decodes to a `*.vercel.app` host, set `CLERK_FRONTEND_API` to the Clerk-owned host from step 7 (Vercel Production env). Redeploy.
 9. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
@@ -46,7 +46,7 @@ After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>
 
 **How Marco approves someone**
 
-1. Sign in and open **People** (`/app#/people`).
+1. Sign in and open **People** (`/#/people`).
 2. Under **Waitlist**, find the email → **Invite**.
 3. That grants our ACL and sends a Clerk invitation. They **Sign in with Google** with that same Google email.
 
@@ -56,7 +56,7 @@ A request does not guarantee a spot. `SYSTEM_USER_EMAIL` is the operator. A Cler
 
 - Clerk invitations (dashboard or **Invite to app**) are what let someone complete Google sign-in.
 - Our store still gates the product: even a signed-in Clerk user without app grant sees the full-page no-access screen (`marcode.chavez.jr@gmail.com`).
-- **Invite to app** (`/app#/people`, system only): grants app access **and** calls Clerk `invitations.createInvitation`. Waitlist **Invite** is the same action.
+- **Invite to app** (`/#/people`, system only): grants app access **and** calls Clerk `invitations.createInvitation`. Waitlist **Invite** is the same action.
 - **Invite to this board** (`#/invite/:id`, any peer on the board): email on the board only. No Clerk account. They still cannot use the app until the system user grants app access and they sign in with Google.
 
 | Action | Who | Effect |
@@ -167,7 +167,9 @@ Connect the GitHub repo in the Vercel dashboard (root directory = repo root, fra
 | `/api/sync` | `api/sync.mjs` |
 | `/api/config` | `api/config.mjs` (publishable key + Clerk-owned `frontendApi`) |
 | `/api/access`, `/api/access/*` | `api/access.mjs` (session, invites, public waitlist POST) |
-| `/app` | static `web/app/index.html` (canvas) |
+| `/` | static `web/index.html` (canvas) |
+| `/splash` | static `web/splash.html` (marketing) |
+| `/app` | alias of `/` |
 | `/mcp`, `/sse`, `/mcp/*`, `/api/mcp/*` | `api/mcp.mjs` |
 
 ### Persistence (required on Vercel)
@@ -189,7 +191,7 @@ Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`), `CLERK_PUBLISHABLE_KEY`, a
 
 ### Open Graph / share image
 
-`web/index.html` sets `og:image` to `/og.png` (`web/og.png`, 1200×630 wordmark on the cool-gray board). Path-relative URLs work on a Vercel deploy. Some crawlers need an absolute URL: set `PUBLIC_ORIGIN` to `https://data-based-app.vercel.app` (no trailing slash).
+`web/splash.html` sets `og:image` to `/og.png` (`web/og.png`, 1200×630 wordmark on the cool-gray board). Path-relative URLs work on a Vercel deploy. Some crawlers need an absolute URL: set `PUBLIC_ORIGIN` to `https://data-based-app.vercel.app` (no trailing slash).
 
 MCP keys and ingest snapshots use the same backend (`mcp-keys` / `ingests` keys), not a gitignored file on the serverless filesystem.
 
@@ -218,7 +220,7 @@ bend PROOF.bend
 - Table cards carry a `+` that adds a next-kind card and one arrow. The same card can grow many arrows. Drag a port onto another card to share a module. Notes are not in that helper.
 - Note cards: toolstrip sticky, or marketplace. Click into the card to write. Resize from the corner
 - Empty-state copy is a viewport HUD. Panning the dots does not move it
-- `/app#/boards` creates and switches boards. `/app#/invite/:id` invites an email **to that board**. `/app#/people` (system user) invites **into the product** and sees the waitlist. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the server; the server filters by user.
+- `/#/boards` creates and switches boards. `/#/invite/:id` invites an email **to that board**. `/#/people` (system user) invites **into the product** and sees the waitlist. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the server; the server filters by user.
 - `V` select, Space pan, `N` note, `Esc` close, `⌫` delete the selected card
 
 ## Native path
@@ -227,7 +229,7 @@ Abandoned. `main.bend` / `view.bend` / `tick.bend` still typecheck as a Bend `Ap
 
 ## Files
 
-- `web/index.html`: marketing splash. `web/app/index.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the boards
+- `web/splash.html`: marketing splash. `web/index.html`, `web/app.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the boards
 - `web/og.png`, `web/favicon.svg`, `web/favicon.png`, `web/apple-touch-icon.png`: share image and icons
 - `web/js/persist.js`, `web/js/sync.js`, `web/js/access.js`, `web/sync-server.mjs`: localStorage blob + authed `/api/sync` + app-access ACL
 - `api/sync.mjs`, `api/mcp.mjs`, `api/access.mjs`, `api/config.mjs`, `vercel.json`: Vercel static + serverless
