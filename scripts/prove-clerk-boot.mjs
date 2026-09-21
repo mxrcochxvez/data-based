@@ -18,6 +18,8 @@ const must = [
   ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
   ["loads Clerk JS from Clerk-hosted frontend API or jsDelivr", /clerkOwnsNpm/],
   ["falls back to jsDelivr when the Frontend API is not Clerk-hosted", /cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@5/],
+  ["constructs Clerk with frontendApi so FAPI is not vercel.app", /new (?:loaded|Ctor)\(\s*key,\s*opts\s*\)/],
+  ["refuses *.vercel.app as Frontend API", /vercelFapiMessage/],
   ["shows splash instead of a Sign in wall", /screen-splash/],
   ["requires a server-verified email before the invite gate", /if \(!session\.verified\)/],
   ["sends Clerk getToken as Authorization Bearer", /Authorization\s*=\s*["']Bearer /],
@@ -60,8 +62,11 @@ const restrictedOk = restrictedRe.test(restrictedSample);
 console.log(restrictedOk ? "pass" : "fail", "Restricted sign-up errors map to invite copy");
 if (!restrictedOk) failed += 1;
 
-const bootOk = /clerkOwnsNpm/.test(boot) && boot.includes("cdn.jsdelivr.net/npm/@clerk/clerk-js@5");
-console.log(bootOk ? "pass" : "fail", "clerk-boot skips satellite vercel.app npm hosts");
+const bootOk = /clerkOwnsNpm/.test(boot)
+  && boot.includes("cdn.jsdelivr.net/npm/@clerk/clerk-js@5")
+  && /rewritePublishableKey/.test(boot)
+  && /cfg\.frontendApi/.test(boot);
+console.log(bootOk ? "pass" : "fail", "clerk-boot skips satellite vercel.app npm hosts and rewrites FAPI");
 if (!bootOk) failed += 1;
 const splashOk = !splash.includes("clerk.shared.lcl.dev");
 console.log(splashOk ? "pass" : "fail", "splash does not preconnect clerk.shared.lcl.dev");

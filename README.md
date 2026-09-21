@@ -24,6 +24,7 @@ Sign-in is **Clerk**, **Sign in with Google** only. `/` is the marketing splash 
 | --- | --- | --- |
 | `CLERK_PUBLISHABLE_KEY` | Client via `GET /api/config` | Clerk JS. Also accepted: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` |
 | `CLERK_SECRET_KEY` | Server only | Verify session JWTs; send Clerk invitations when the operator invites |
+| `CLERK_FRONTEND_API` | Server → `/api/config` as `frontendApi` | Clerk-owned Frontend API host (example: `something.clerk.accounts.dev`). Required when the publishable key decodes to `*.vercel.app`. Also accepted: `NEXT_PUBLIC_CLERK_FRONTEND_API`, `VITE_CLERK_FRONTEND_API` |
 | `SYSTEM_USER_EMAIL` | Server | Clerk email of the operator. Alias: `DATABSED_SYSTEM_EMAIL` |
 
 Example operator: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
@@ -37,10 +38,11 @@ After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>
 3. **Configure → Restrictions** (or **User & authentication → Restrictions**): set sign-up to **Restricted** so only invited emails can join. Keep public sign-up off.
 4. Do **not** turn on Clerk Waitlist. Request access writes emails into our access store (same KV as boards).
 5. Disable email/password if you want Google-only.
-6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`). Allow redirects to `/` and `/app`.
-7. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only.
-8. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
-9. Redeploy after adding env vars.
+6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`). Allow redirects to `/` and `/app`. These are **application origins**, not the Frontend API.
+7. **Production Frontend API**: do **not** set a satellite, proxy, or DNS target on `*.vercel.app`. `clerk.*.vercel.app` is not a Clerk Frontend API (browser calls to `/v1/environment` and `/v1/client` fail with `ERR_CONNECTION_CLOSED`). Use Clerk’s default FAPI (`something.clerk.accounts.dev` on the API keys page). If a satellite was added, remove it and copy the default Frontend API host.
+8. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only. If the publishable key still decodes to a `*.vercel.app` host, set `CLERK_FRONTEND_API` to the Clerk-owned host from step 7 (Vercel Production env). Redeploy.
+9. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
+10. Redeploy after adding env vars.
 
 **How Marco approves someone**
 
@@ -163,7 +165,7 @@ Connect the GitHub repo in the Vercel dashboard (root directory = repo root, fra
 | Browser path | Function |
 | --- | --- |
 | `/api/sync` | `api/sync.mjs` |
-| `/api/config` | `api/config.mjs` (Clerk publishable key only) |
+| `/api/config` | `api/config.mjs` (publishable key + Clerk-owned `frontendApi`) |
 | `/api/access`, `/api/access/*` | `api/access.mjs` (session, invites, public waitlist POST) |
 | `/app` | static `web/app/index.html` (canvas) |
 | `/mcp`, `/sse`, `/mcp/*`, `/api/mcp/*` | `api/mcp.mjs` |
@@ -183,7 +185,7 @@ Vercel has **no durable local disk**. Local `node web/sync-server.mjs` still wri
 
 Optional `STORE_BACKEND=kv|blob|fs`. `fs` is for local only.
 
-Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`), `CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` on the Vercel project. Redeploy after adding env vars. See `.env.example`. Never commit secret values.
+Set `SYSTEM_USER_EMAIL` (or `DATABSED_SYSTEM_EMAIL`), `CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` on the Vercel project. If Production keys still encode `clerk.*.vercel.app`, also set `CLERK_FRONTEND_API` to the Clerk-owned Frontend API host. Redeploy after adding env vars. See `.env.example`. Never commit secret values.
 
 ### Open Graph / share image
 

@@ -99,6 +99,7 @@
   let resolveReady = null;
   const readyPromise = new Promise((resolve) => { resolveReady = resolve; });
   let clerkPk = "";
+  let clerkFapi = "";
   let clerkStatus = "off";
   let clerkFail = "";
 
@@ -229,14 +230,32 @@
       .catch(() => null);
   }
 
+  function normalizeFrontendApiHost(value) {
+    let raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      if (/^https?:\/\//i.test(raw)) raw = new URL(raw).hostname;
+      else raw = raw.split("/")[0];
+    } catch (_) {
+      return "";
+    }
+    raw = raw.replace(/\.$/, "").toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i.test(raw)) return "";
+    return raw;
+  }
+
   function clerkFrontendHost(pk) {
     try {
       const encoded = String(pk || "").replace(/^pk_(test|live)_/, "");
       const pad = "=".repeat((4 - (encoded.length % 4)) % 4);
       const host = atob(encoded + pad).replace(/\$$/, "").trim();
-      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
+      return normalizeFrontendApiHost(host);
     } catch (_) {}
     return "";
+  }
+
+  function isVercelAppFrontendApi(host) {
+    return /\.vercel\.app$/i.test(String(host || ""));
   }
 
   function clerkOwnsNpm(host) {
@@ -246,12 +265,37 @@
       || /(^|\.)clerk\.services$/i.test(host);
   }
 
-  function clerkScriptUrl(pk) {
-    const host = clerkFrontendHost(pk);
+  function usableFrontendApi(cfg, pk) {
+    const fromCfg = normalizeFrontendApiHost((cfg && cfg.frontendApi) || clerkFapi || global.__clerk_frontend_api);
+    if (fromCfg && !isVercelAppFrontendApi(fromCfg)) return fromCfg;
+    const fromKey = clerkFrontendHost(pk);
+    if (fromKey && !isVercelAppFrontendApi(fromKey)) return fromKey;
+    return "";
+  }
+
+  function rewritePublishableKey(pk, frontendApi) {
+    const host = normalizeFrontendApiHost(frontendApi);
+    if (!pk || !host || isVercelAppFrontendApi(host)) return pk;
+    if (clerkFrontendHost(pk) === host) return pk;
+    const kind = /^pk_test_/.test(pk) ? "pk_test_" : "pk_live_";
+    let payload = "";
+    try {
+      payload = btoa(host + "$").replace(/=+$/, "");
+    } catch (_) {
+      return pk;
+    }
+    return kind + payload;
+  }
+
+  function clerkScriptUrl(host) {
     if (host && clerkOwnsNpm(host)) {
       return "https://" + host + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
     }
     return CLERK_JS;
+  }
+
+  function vercelFapiMessage() {
+    return "This publishable key encodes a Vercel host as Clerk Frontend API. *.vercel.app cannot serve /v1/client. In Clerk Production, remove the satellite/proxy domain on vercel.app and use the default Frontend API. Set CLERK_FRONTEND_API to that Clerk-owned host (something.clerk.accounts.dev) on Vercel and redeploy.";
   }
 
   function loadClerkScript(pk) {
@@ -295,12 +339,12 @@
         return;
       }
       const s = document.createElement("script");
-      s.src = clerkScriptUrl(pk);
+      s.src = clerkScriptUrl(clerkFapi || clerkFrontendHost(pk));
       s.async = true;
       s.crossOrigin = "anonymous";
       s.fetchPriority = "high";
       s.dataset.clerkJs = "1";
-      s.setAttribute("data-clerk-publishable-key", pk);
+      if (pk && clerkFapi) s.setAttribute("data-clerk-publishable-key", pk);
       watch(s);
       document.head.appendChild(s);
     });
@@ -308,30 +352,70 @@
 
   let clerkBootPromise = null;
 
-  function bootClerk(pk) {
-    clerkPk = pk;
-    if (clerkStatus === "ready" && global.Clerk && global.Clerk.client) {
+  function clerkInstanceFapi(clerk) {
+    try {
+      return normalizeFrontendApiHost(clerk && clerk.frontendApi);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function bootClerk(pk, frontendApi) {
+    const fapi = usableFrontendApi({ frontendApi: frontendApi || clerkFapi }, pk);
+    clerkFapi = fapi;
+    const key = rewritePublishableKey(pk, fapi);
+    clerkPk = key;
+    if (!fapi) {
+      const decoded = clerkFrontendHost(pk);
+      clerkStatus = "failed";
+      clerkFail = isVercelAppFrontendApi(decoded)
+        ? vercelFapiMessage()
+        : "Server did not send a Clerk Frontend API host. Set CLERK_FRONTEND_API to the Clerk-owned host from the dashboard (something.clerk.accounts.dev).";
+      return Promise.reject(new Error(clerkFail));
+    }
+    if (
+      clerkStatus === "ready"
+      && global.Clerk
+      && global.Clerk.client
+      && clerkInstanceFapi(global.Clerk) === fapi
+    ) {
       return Promise.resolve(global.Clerk);
     }
     if (clerkBootPromise) return clerkBootPromise;
     clerkStatus = "loading";
     clerkFail = "";
-    clerkBootPromise = loadClerkScript(pk).then(function () {
+    global.__clerk_publishable_key = key;
+    global.__clerk_frontend_api = fapi;
+    clerkBootPromise = loadClerkScript(key).then(function () {
       const loaded = global.Clerk;
-      if (typeof loaded === "function") {
-        const inst = new loaded(pk);
-        return inst.load().then(function () {
+      const Ctor = typeof loaded === "function"
+        ? loaded
+        : (loaded && loaded.constructor && loaded.constructor !== Object ? loaded.constructor : null);
+      // Clerk JS 5.128 reads FAPI from the publishable key. frontendApi is passed for
+      // newer constructors; domain/proxyUrl are satellite/proxy and must not be vercel.app.
+      const opts = { frontendApi: fapi };
+      if (typeof Ctor === "function" && Ctor !== loaded) {
+        const inst = new Ctor(key, opts);
+        return inst.load({ isSatellite: false }).then(function () {
           global.Clerk = inst;
           clerkStatus = "ready";
           return inst;
         });
       }
-      if (loaded && loaded.client) {
+      if (typeof loaded === "function") {
+        const inst = new loaded(key, opts);
+        return inst.load({ isSatellite: false }).then(function () {
+          global.Clerk = inst;
+          clerkStatus = "ready";
+          return inst;
+        });
+      }
+      if (loaded && clerkInstanceFapi(loaded) === fapi && loaded.client) {
         clerkStatus = "ready";
         return loaded;
       }
-      if (loaded && typeof loaded.load === "function") {
-        return loaded.load({ publishableKey: pk }).then(function () {
+      if (loaded && typeof loaded.load === "function" && clerkInstanceFapi(loaded) === fapi) {
+        return loaded.load({ publishableKey: key, isSatellite: false }).then(function () {
           clerkStatus = "ready";
           return loaded;
         });
@@ -486,8 +570,8 @@
 
   function googleReadyThen(run) {
     if (canRedirect(global.Clerk)) return Promise.resolve(run(global.Clerk));
-    const cfgP = clerkPk
-      ? Promise.resolve({ publishableKey: clerkPk })
+    const cfgP = clerkPk && clerkFapi
+      ? Promise.resolve({ publishableKey: clerkPk, frontendApi: clerkFapi })
       : Promise.resolve(global.__databasedClerkPreload || fetch("/api/config").then((res) => (res.ok ? res.json() : null)).catch(() => null));
     return cfgP.then(function (cfg) {
       const pk = clerkPk || (cfg && cfg.publishableKey) || "";
@@ -499,7 +583,7 @@
         }
         return;
       }
-      return bootClerk(pk).then(run);
+      return bootClerk(pk, usableFrontendApi(cfg, pk)).then(run);
     });
   }
 
@@ -637,12 +721,13 @@
       .then((cfg) => {
         if (cfg && cfg.contactEmail) session.contactEmail = cfg.contactEmail;
         if (cfg && cfg.clerkInstance) session.clerkInstance = cfg.clerkInstance;
+        if (cfg && cfg.frontendApi) session.clerkInstance = cfg.frontendApi;
         if (cfg && cfg.clerkKeyKind) session.clerkKeyKind = cfg.clerkKeyKind;
         if (cfg && cfg.clerkEnvLabel) session.clerkEnvLabel = cfg.clerkEnvLabel;
         if (cfg && cfg.systemEnv === false && cfg.systemHint) session.systemHint = cfg.systemHint;
         if (cfg && cfg.clerk && cfg.publishableKey) {
           session.clerk = true;
-          return bootClerk(cfg.publishableKey).then(function (clerk) {
+          return bootClerk(cfg.publishableKey, usableFrontendApi(cfg, cfg.publishableKey)).then(function (clerk) {
             const href = String(location.href);
             return finishOAuthBounce(clerk).then(function (ready) {
               if (ready && ready.addListener) {

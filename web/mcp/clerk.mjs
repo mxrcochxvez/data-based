@@ -51,27 +51,91 @@ export function clerkKeysAligned() {
   return pk === sk;
 }
 
-export function clerkFrontendHost() {
-  const pk = clerkPublishableKey();
+const FRONTEND_API_HOST_RE = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/i;
+
+export function normalizeFrontendApiHost(value) {
+  let raw = String(value || "").trim();
+  if (!raw) return "";
   try {
-    const encoded = pk.replace(/^pk_(test|live)_/, "");
+    if (/^https?:\/\//i.test(raw)) raw = new URL(raw).hostname;
+    else raw = raw.split("/")[0];
+  } catch (_) {
+    return "";
+  }
+  raw = raw.replace(/\.$/, "").toLowerCase();
+  if (!FRONTEND_API_HOST_RE.test(raw)) return "";
+  return raw;
+}
+
+export function isVercelAppFrontendApi(host) {
+  return /\.vercel\.app$/i.test(String(host || ""));
+}
+
+export function decodePublishableKeyFrontendApi(pk) {
+  try {
+    const encoded = String(pk || "").replace(/^pk_(test|live)_/, "");
+    if (!encoded) return "";
     const pad = "=".repeat((4 - (encoded.length % 4)) % 4);
     const host = Buffer.from(encoded + pad, "base64").toString("utf8").replace(/\$$/, "").trim();
-    if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
-  } catch (_) {}
+    return normalizeFrontendApiHost(host);
+  } catch (_) {
+    return "";
+  }
+}
+
+function clerkFrontendApiFromEnv() {
+  return normalizeFrontendApiHost(
+    process.env.CLERK_FRONTEND_API ||
+    process.env.NEXT_PUBLIC_CLERK_FRONTEND_API ||
+    process.env.VITE_CLERK_FRONTEND_API ||
+    ""
+  );
+}
+
+/** Clerk-owned FAPI, or a custom CNAME that is not *.vercel.app. */
+export function clerkFrontendApi() {
+  const fromEnv = clerkFrontendApiFromEnv();
+  if (fromEnv && !isVercelAppFrontendApi(fromEnv)) return fromEnv;
+  const fromKey = decodePublishableKeyFrontendApi(clerkPublishableKey());
+  if (fromKey && !isVercelAppFrontendApi(fromKey)) return fromKey;
   return "";
+}
+
+export function encodePublishableKey(kind, frontendApi) {
+  const host = normalizeFrontendApiHost(frontendApi);
+  const prefix = kind === "test" ? "pk_test_" : "pk_live_";
+  if (!host) return "";
+  return prefix + Buffer.from(host + "$", "utf8").toString("base64").replace(/=+$/, "");
+}
+
+export function clerkPublishableKeyForBrowser() {
+  const pk = clerkPublishableKey();
+  const fapi = clerkFrontendApi();
+  if (!pk) return "";
+  if (!fapi) return pk;
+  const decoded = decodePublishableKeyFrontendApi(pk);
+  if (decoded === fapi) return pk;
+  return encodePublishableKey(clerkKeyKind() || "live", fapi) || pk;
+}
+
+export function clerkFrontendHost() {
+  return clerkFrontendApi();
 }
 
 export function clerkClientConfig() {
   const kind = clerkKeyKind();
+  const frontendApi = clerkFrontendApi();
+  const pk = frontendApi ? clerkPublishableKeyForBrowser() : clerkPublishableKey();
   return {
-    clerk: Boolean(clerkPublishableKey()),
-    publishableKey: clerkPublishableKey() || null,
+    clerk: Boolean(pk),
+    publishableKey: pk || null,
+    frontendApi: frontendApi || null,
     google: true,
-    clerkInstance: clerkFrontendHost() || null,
+    clerkInstance: frontendApi || null,
     clerkKeyKind: kind || null,
     clerkEnvLabel: kind === "live" ? "Production" : (kind === "test" ? "Development" : null),
     clerkKeysAligned: clerkKeysAligned(),
+    clerkFapi: Boolean(frontendApi),
   };
 }
 
