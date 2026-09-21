@@ -24,6 +24,13 @@ colors:
   prisma: "#0c344b"
   drizzle: "#c5f74f"
   graphql: "#e10098"
+  kysely: "#121212"
+  convex: "#EE342F"
+  zod: "#408AFF"
+  proto: "#30638E"
+  trpc: "#398CCB"
+  hono: "#FF5B11"
+  openapi: "#6BA539"
   sql: "#336791"
   effect: "#e88c30"
   tag-blue: "#7eb6ff"
@@ -187,7 +194,7 @@ New element types add data and reuse these classes. They do not grow one-off CSS
 `.rail` / `.tools`. Vertical tool island. Do not restyle the brand island from this file. Header wordmark is owned elsewhere. On a phone the tools sit in a bottom island. Comments open as a sheet above that island. The Liveblocks badge stays below the header, never over the tools.
 
 ### Marketplace
-`.market-grid` is a flat app launcher. `.offer` is icon then name. Prisma / Drizzle / GraphQL use vendor color tiles; other kinds stay ink on `--field`. Rail filters dim other tiles (`.offer.is-dim`). Do not bring back list rows or section headings in this panel.
+`.market-grid` is a flat app launcher. `.offer` is icon then name. Vendor kinds fill `.offer-mark` with their brand color. Data-based kinds (note, mind, SQL table, effect, controller, repository) stay ink on `--field`. Rail filters dim other tiles (`.offer.is-dim`). Do not bring back list rows or section headings in this panel.
 
 ## Do's and Don'ts
 

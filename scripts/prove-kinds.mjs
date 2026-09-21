@@ -66,8 +66,28 @@ assert.ok(zodHits.includes("zod"), "search zod");
 const prismaHits = Kinds.search("prisma").map((s) => s.kind);
 assert.ok(prismaHits.includes("prisma"), "search prisma");
 
-const vendorMarks = all.filter((s) => /is-(prisma|drizzle|gql)/.test(s.mark)).map((s) => s.kind).sort();
-assert.equal(vendorMarks.join(","), "drizzle,gql,prisma");
+const vendorTiles = ["convex", "drizzle", "gql", "hono", "kysely", "openapi", "prisma", "proto", "trpc", "zod"];
+for (const kind of vendorTiles) {
+  const spec = Kinds.spec(kind);
+  assert.equal(spec.tile, kind, kind + " tile");
+  assert.ok(spec.mark.includes("is-" + kind), kind + " mark class");
+  assert.ok(appCss.includes(".offer-mark.is-" + kind), kind + " css fill");
+}
+const inkKinds = all.filter((s) => s.tile === "ink").map((s) => s.kind).sort();
+assert.equal(inkKinds.join(","), "ctrl,logic,mind,note,repo,schema");
+const vendorMarks = all.filter((s) => /is-(?!ink\b)[a-z]+/.test(s.mark)).map((s) => s.kind).sort();
+assert.equal(vendorMarks.join(","), vendorTiles.join(","));
+assert.ok(appCss.includes("background: #121212"), "kysely black");
+assert.ok(appCss.includes("background: #ee342f"), "convex red");
+assert.ok(appCss.includes("background: #408aff"), "zod blue");
+assert.ok(appCss.includes("background: #30638e"), "proto docsy");
+assert.ok(appCss.includes("background: #398ccb"), "trpc blue");
+assert.ok(appCss.includes("background: #ff5b11"), "hono flame");
+assert.ok(appCss.includes("background: #6ba539"), "openapi green");
+assert.ok(Kinds.spec("hono").mark.includes('stroke="#111"'), "hono ink glyph");
+assert.ok(Kinds.spec("openapi").mark.includes('stroke="#111"'), "openapi ink glyph");
+assert.ok(Kinds.spec("convex").mark.includes('stroke="#fff"'), "convex white glyph");
+assert.ok(Kinds.spec("kysely").mark.includes('stroke="#fff"'), "kysely white glyph");
 
 assert.ok(!/const CATALOG/.test(appJs), "app.js no longer owns CATALOG");
 for (const html of [indexHtml, appHtml, appIndex]) {

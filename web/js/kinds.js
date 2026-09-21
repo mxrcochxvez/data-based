@@ -1,5 +1,7 @@
 (function (root) {
   const INK = 'fill="none" stroke="#111" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"';
+  const WHITE = 'fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"';
+  const VENDOR_TILES = new Set(["prisma", "drizzle", "gql", "kysely", "convex", "zod", "proto", "trpc", "hono", "openapi"]);
   const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
   const ordered = [];
   const byId = new Map();
@@ -91,6 +93,10 @@
     return `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24">${path}</svg></span>`;
   }
 
+  function vendorMark(tile, path) {
+    return `<span class="offer-mark is-${tile}" aria-hidden="true"><svg viewBox="0 0 24 24">${path}</svg></span>`;
+  }
+
   function fail(error) {
     return { ok: false, error };
   }
@@ -111,13 +117,13 @@
     ctrl: inkMark(`<path ${INK} d="M5 8h14v3H5V8Zm0 5h14v3H5v-3Zm0 5h14v3H5v-3Z"/>`),
     repo: inkMark(`<path ${INK} d="M4.5 8.5h6l1.5 2h7.5v8.5h-15V8.5Zm0 0V7l2.2-2h4.2l1.1 1.5"/>`),
     gql: `<span class="offer-mark is-gql" aria-hidden="true"><svg viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.8 20 8.4v7.2L12 20.2 4 15.6V8.4L12 3.8Z"/><path d="M12 3.8v16.4M4.2 8.5l15.6 7M19.8 8.5l-15.6 7"/></g><circle cx="12" cy="3.8" r="1.45" fill="#fff"/><circle cx="20" cy="8.4" r="1.45" fill="#fff"/><circle cx="20" cy="15.6" r="1.45" fill="#fff"/><circle cx="12" cy="20.2" r="1.45" fill="#fff"/><circle cx="4" cy="15.6" r="1.45" fill="#fff"/><circle cx="4" cy="8.4" r="1.45" fill="#fff"/></svg></span>`,
-    kysely: inkMark(`<path ${INK} d="M7 5h10v3H13v11H11V8H7V5Z"/>`),
-    convex: inkMark(`<path ${INK} d="M12 4.5 19.5 9v6L12 19.5 4.5 15V9L12 4.5Z"/>`),
-    zod: inkMark(`<path ${INK} d="M12 3.8 20 12l-8 8.2L4 12l8-8.2Z"/>`),
-    proto: inkMark(`<path ${INK} d="M8 5h8l4 7-4 7H8l-4-7 4-7Z"/>`),
-    trpc: inkMark(`<path ${INK} d="M5 6.5h14v3H5v-3Zm0 5h14v3H5v-3Zm0 5h9v3H5v-3Z"/>`),
-    hono: inkMark(`<path ${INK} d="M6 18c2-6 3.2-10 6-13 2.8 3 4 7 6 13"/><path ${INK} d="M8.5 13h7"/>`),
-    openapi: inkMark(`<circle ${INK} cx="12" cy="12" r="7.2"/><path ${INK} d="M12 8v8M8.5 10.5h7M8.5 13.5h7"/>`),
+    kysely: vendorMark("kysely", `<path ${WHITE} d="M7 5h10v3H13v11H11V8H7V5Z"/>`),
+    convex: vendorMark("convex", `<path ${WHITE} d="M12 4.5 19.5 9v6L12 19.5 4.5 15V9L12 4.5Z"/>`),
+    zod: vendorMark("zod", `<path ${WHITE} d="M12 3.8 20 12l-8 8.2L4 12l8-8.2Z"/>`),
+    proto: vendorMark("proto", `<path ${WHITE} d="M8 5h8l4 7-4 7H8l-4-7 4-7Z"/>`),
+    trpc: vendorMark("trpc", `<path ${WHITE} d="M5 6.5h14v3H5v-3Zm0 5h14v3H5v-3Zm0 5h9v3H5v-3Z"/>`),
+    hono: vendorMark("hono", `<path ${INK} d="M6 18c2-6 3.2-10 6-13 2.8 3 4 7 6 13"/><path ${INK} d="M8.5 13h7"/>`),
+    openapi: vendorMark("openapi", `<circle ${INK} cx="12" cy="12" r="7.2"/><path ${INK} d="M12 8v8M8.5 10.5h7M8.5 13.5h7"/>`),
   };
 
   function parseHttpRoutes(src) {
@@ -556,8 +562,8 @@
     if (!spec || !spec.kind) throw new Error("kind spec needs kind");
     if (byId.has(spec.kind)) throw new Error("duplicate kind " + spec.kind);
     const tile = spec.tile || "ink";
-    if (tile !== "ink" && spec.kind !== "prisma" && spec.kind !== "drizzle" && spec.kind !== "gql") {
-      throw new Error("vendor tile not allowed on " + spec.kind);
+    if (tile !== "ink" && (!VENDOR_TILES.has(tile) || tile !== spec.kind)) {
+      throw new Error("unknown vendor tile " + tile + " on " + spec.kind);
     }
     const family = spec.family;
     if (!["table", "type", "route", "list", "effect", "note"].includes(family)) {
@@ -745,8 +751,8 @@
   addTable("schema", "SQL table", "SQL table", "CREATE TABLE with typed columns.", "data-based", "ink", ["sql", "table"]);
   addTable("drizzle", "Drizzle table", "Drizzle", "pgTable in TypeScript.", "Drizzle", "drizzle", ["drizzle", "orm"]);
   addTable("prisma", "Prisma model", "Prisma", "A model block from schema.prisma.", "Prisma", "prisma", ["prisma", "orm"]);
-  addTable("kysely", "Kysely table", "Kysely", "Typed Kysely table interface.", "Kysely", "ink", ["kysely", "query builder"]);
-  addTable("convex", "Convex table", "Convex", "defineTable with Convex validators.", "Convex", "ink", ["convex", "backend"]);
+  addTable("kysely", "Kysely table", "Kysely", "Typed Kysely table interface.", "Kysely", "kysely", ["kysely", "query builder"]);
+  addTable("convex", "Convex table", "Convex", "defineTable with Convex validators.", "Convex", "convex", ["convex", "backend"]);
 
   define({
     kind: "logic",
@@ -786,7 +792,7 @@
     },
   });
 
-  function addRoute(kind, name, label, blurb, vendor, tags, section) {
+  function addRoute(kind, name, label, blurb, vendor, tile, tags, section) {
     const pack = LANG[kind];
     define({
       kind,
@@ -795,6 +801,7 @@
       label,
       blurb,
       vendor,
+      tile: tile || "ink",
       section: section || "api",
       layer: "controller",
       tags,
@@ -807,10 +814,10 @@
     });
   }
 
-  addRoute("ctrl", "Controller", "Controller", "An HTTP entry that owns a use-case.", "data-based", ["http", "controller"], "logic");
-  addRoute("trpc", "tRPC router", "tRPC", "publicProcedure query and mutation routes.", "tRPC", ["trpc", "rpc"]);
-  addRoute("hono", "Hono route", "Hono", "app.get / app.post on a Hono app.", "Hono", ["hono", "http"]);
-  addRoute("openapi", "OpenAPI path", "OpenAPI", "YAML paths with methods and responses.", "OpenAPI", ["openapi", "swagger", "yaml"]);
+  addRoute("ctrl", "Controller", "Controller", "An HTTP entry that owns a use-case.", "data-based", "ink", ["http", "controller"], "logic");
+  addRoute("trpc", "tRPC router", "tRPC", "publicProcedure query and mutation routes.", "tRPC", "trpc", ["trpc", "rpc"]);
+  addRoute("hono", "Hono route", "Hono", "app.get / app.post on a Hono app.", "Hono", "hono", ["hono", "http"]);
+  addRoute("openapi", "OpenAPI path", "OpenAPI", "YAML paths with methods and responses.", "OpenAPI", "openapi", ["openapi", "swagger", "yaml"]);
 
   define({
     kind: "repo",
@@ -857,12 +864,12 @@
     defaults: [""],
     fns: ["", "!", "[]"],
   });
-  addType("zod", "Zod object", "Zod", "z.object with a chain per field.", "Zod", "ink", ["zod", "validation", "schema"], {
+  addType("zod", "Zod object", "Zod", "z.object with a chain per field.", "Zod", "zod", ["zod", "validation", "schema"], {
     types: ["string", "number", "boolean", "date", "unknown"],
     defaults: [""],
     fns: ["", "optional()", "nullable()", "email()", "uuid()", "min(1)"],
   });
-  addType("proto", "Protobuf message", "Protobuf", "A proto3 message with numbered fields.", "Protocol Buffers", "ink", ["protobuf", "grpc"], {
+  addType("proto", "Protobuf message", "Protobuf", "A proto3 message with numbered fields.", "Protocol Buffers", "proto", ["protobuf", "grpc"], {
     types: ["string", "int32", "int64", "bool", "bytes", "double"],
     defaults: [""],
     fns: ["", "repeated"],
