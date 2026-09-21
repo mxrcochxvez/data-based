@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.18.1",
+    "@liveblocks/client": "^3.24.1",
+    "@liveblocks/node": "^3.24.1",
     "@upstash/redis": "^1.35.1",
     "@vercel/blob": "^1.1.1"
   }

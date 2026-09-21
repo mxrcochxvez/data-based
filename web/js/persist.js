@@ -64,6 +64,11 @@
       if (sync && typeof sync.kick === "function") sync.kick();
       else if (sync && typeof sync.push === "function") sync.push();
     } catch (_) {}
+    try {
+      if (global.DataBasedLiveblocks && typeof global.DataBasedLiveblocks.broadcastSync === "function") {
+        global.DataBasedLiveblocks.broadcastSync();
+      }
+    } catch (_) {}
   }
 
   function num(v, fallback) {

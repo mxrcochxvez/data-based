@@ -116,6 +116,9 @@
     api.state.editing = null;
     const flow = global.DataBasedFlow;
     if (flow && typeof flow.hydrateFromBoard === "function") flow.hydrateFromBoard(b);
+    if (global.DataBasedLiveblocks && typeof global.DataBasedLiveblocks.enterBoard === "function") {
+      global.DataBasedLiveblocks.enterBoard(b.id);
+    }
   }
 
   function saveNow() {
@@ -263,6 +266,9 @@
     if (boards) renderBoardList();
     if (invite) renderGrants(inviteId || currentBoard().id);
     if (people) renderPeople();
+    if ((boards || invite || people) && global.DataBasedLiveblocks && typeof global.DataBasedLiveblocks.leaveBoard === "function") {
+      global.DataBasedLiveblocks.leaveBoard();
+    }
   }
 
   function openBoard(b) {

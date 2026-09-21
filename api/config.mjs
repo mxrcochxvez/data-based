@@ -23,6 +23,8 @@ export default async function handler(req, res) {
     contactEmail: contactEmail(),
     systemEnv: Boolean(systemEmail()),
     systemHint: systemEnvHint(),
+    liveblocksKey: Boolean(process.env.LIVEBLOCKS_SECRET_KEY || process.env.LIVEBLOCKS_PUBLIC_KEY),
+    liveblocksPublicKey: process.env.LIVEBLOCKS_PUBLIC_KEY || process.env.NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY || "",
   }));
   void ensureSystemClerkUser();
 }

@@ -303,6 +303,11 @@ function persist() {
       window.DataBasedSync.kick();
     }
   } catch (_) {}
+  try {
+    if (window.DataBasedLiveblocks && typeof window.DataBasedLiveblocks.broadcastSync === "function") {
+      window.DataBasedLiveblocks.broadcastSync();
+    }
+  } catch (_) {}
   const hook = (window.DB && window.DB.persistHook) || window.persistBoard;
   if (typeof hook === "function") hook();
 }
@@ -1571,6 +1576,9 @@ function setSelection(ids) {
   state.sel = set;
   state.sels = set;
   paintSel();
+  if (window.DataBasedLiveblocks && typeof window.DataBasedLiveblocks.updateSelection === "function") {
+    window.DataBasedLiveblocks.updateSelection([...set]);
+  }
 }
 
 window.DB = {

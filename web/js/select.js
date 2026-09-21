@@ -55,6 +55,9 @@
       state.sel = new Set(ids || []);
       state.sels = state.sel;
       if (typeof paintSel === "function") paintSel();
+      if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.updateSelection === "function") {
+        root.DataBasedLiveblocks.updateSelection([...state.sel]);
+      }
     }
 
     if (!(state.sel instanceof Set)) state.sel = new Set(idsOf(state.sel));
@@ -204,6 +207,9 @@
     }
 
     function onPointerMove(ev) {
+      if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.updateCursor === "function") {
+        root.DataBasedLiveblocks.updateCursor(canvasPt(canvas, ev));
+      }
       if (!session) return;
       if (session.pointerId != null && ev.pointerId !== session.pointerId) return;
       if (session.kind === "pan") {
@@ -238,6 +244,12 @@
           card.y = Math.max(8, o.top + dy / z);
         }
         paintMoved(session.ids);
+        if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.broadcastDrag === "function") {
+          for (const id of session.ids) {
+            const c = state.cards.find((k) => k.id === id);
+            if (c) root.DataBasedLiveblocks.broadcastDrag(c.id, c.x, c.y);
+          }
+        }
         return;
       }
       if (session.kind === "resize") {
@@ -257,7 +269,12 @@
         if (!session.armed && !session.additive) setSelection([]);
         hideMarquee();
       }
-      if (session.kind === "move" || session.kind === "resize") persist();
+      if (session.kind === "move" || session.kind === "resize") {
+        persist();
+        if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.broadcastSync === "function") {
+          root.DataBasedLiveblocks.broadcastSync();
+        }
+      }
       session = null;
       state.drag = null;
       state.pan = null;
@@ -284,6 +301,11 @@
     scroller.addEventListener("pointermove", onPointerMove);
     scroller.addEventListener("pointerup", onPointerUp);
     scroller.addEventListener("pointercancel", onPointerUp);
+    scroller.addEventListener("pointerleave", () => {
+      if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.clearCursor === "function") {
+        root.DataBasedLiveblocks.clearCursor();
+      }
+    });
 
     window.addEventListener("keydown", (ev) => {
       if (blocked() || typingTarget(ev.target)) return;
