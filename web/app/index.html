@@ -23,6 +23,7 @@
       <div class="canvas" id="canvas" role="application" aria-label="Canvas">
         <svg class="wires" id="wires" aria-hidden="true"></svg>
         <div class="marquee" id="marquee" hidden></div>
+        <div class="live-cursors" id="live-cursors" aria-hidden="true"></div>
       </div>
     </div>
   </div>
@@ -35,7 +36,7 @@
   </aside>
 
   <header class="island brand" id="chrome-brand">
-    <a class="wordmark" href="/app" aria-label="Data Based">
+    <a class="wordmark" href="/" aria-label="Data Based">
       <svg class="wordmark-mark" viewBox="0 0 14 14" aria-hidden="true">
         <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
         <path class="grid" d="M7 0.5v13M0.5 7h13"/>
@@ -49,6 +50,7 @@
     </a>
     <span class="rule" aria-hidden="true"></span>
     <nav class="brand-nav" aria-label="Workspace">
+      <div class="presence-bar" id="presence-bar" aria-label="Collaborators" hidden></div>
       <button type="button" class="chrome-board" id="board-switch" aria-haspopup="menu" aria-expanded="false" aria-controls="board-switch-menu">
         <span class="chrome-board-name" id="board-name">Board</span>
         <svg class="chrome-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -174,7 +176,7 @@
       <h1 id="auth-title">Could not open the board</h1>
       <p class="parse-err" id="who-err" hidden role="alert"></p>
       <p class="lead">That is not a silent return to the homepage. Sign in again from the splash, or check that this environment’s Clerk secret matches the publishable key.</p>
-      <a class="btn" href="/">Back to homepage</a>
+      <a class="btn" href="/splash">Back to homepage</a>
     </div>
   </section>
 
@@ -250,5 +252,6 @@
   <script src="/js/export.js"></script>
   <script src="/js/mcp-keys.js"></script>
   <script src="/js/sync.js"></script>
+  <script type="module" src="/js/liveblocks.js"></script>
 </body>
 </html>

@@ -42,7 +42,7 @@ assert.equal(rows[0].status, "invited");
 const accessJs = fs.readFileSync(path.join(root, "web/js/access.js"), "utf8");
 const accessApi = fs.readFileSync(path.join(root, "web/mcp/access.mjs"), "utf8");
 const clerk = fs.readFileSync(path.join(root, "web/mcp/clerk.mjs"), "utf8");
-const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "web/splash.html"), "utf8");
 const boards = fs.readFileSync(path.join(root, "web/js/boards.js"), "utf8");
 
 const must = [

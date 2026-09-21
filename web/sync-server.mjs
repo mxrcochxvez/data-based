@@ -1,3 +1,4 @@
+import "./mcp/env.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,7 +18,7 @@ import {
   systemEnvHint,
   ensureSystemClerkUser,
 } from "./mcp/access.mjs";
-import { clerkClientConfig, clerkConfigured } from "./mcp/clerk.mjs";
+import { clerkClientConfig, clerkConfigured, clerkIdentityFromRequest } from "./mcp/clerk.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(ROOT, "data");
@@ -141,10 +142,104 @@ export async function handleAccessHttp(req, res) {
   }
 }
 
+const COLLAB_COLORS = [
+  "#e05252", "#e08438", "#d9a429", "#2bb370",
+  "#22a2c3", "#3d7be6", "#8257e5", "#cf4b9a"
+];
+
+function userColor(str) {
+  let hash = 0;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash) + s.charCodeAt(i);
+  return COLLAB_COLORS[Math.abs(hash) % COLLAB_COLORS.length];
+}
+
+export async function handleLiveblocksAuth(req, res) {
+  try {
+    if (req.method === "OPTIONS") {
+      send(res, 204, "");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, { error: "method not allowed" });
+      return;
+    }
+    const handle = await requireAppUser(req, res);
+    if (!handle) return;
+
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch (_) {
+      send(res, 400, { error: "invalid json" });
+      return;
+    }
+
+    const room = body && typeof body.room === "string" ? body.room.trim() : "";
+    if (!room) {
+      send(res, 400, { error: "room is required" });
+      return;
+    }
+
+    const boardId = room.startsWith("board:") ? room.slice(6) : room;
+    if (boardId) {
+      const store = await readStoreFile(DATA_DIR);
+      const board = Array.isArray(store.boards) ? store.boards.find((b) => b.id === boardId) : null;
+      if (board && !isSystemHandle(handle)) {
+        const isOwner = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle && g.role === "owner");
+        const hasGrant = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle);
+        if (!isOwner && !hasGrant && aclEnforced()) {
+          send(res, 403, { error: "board_access_denied", message: "You do not have access to this board." });
+          return;
+        }
+      }
+    }
+
+    const secretKey = (process.env.LIVEBLOCKS_SECRET_KEY || "").trim();
+    if (!secretKey) {
+      send(res, 503, {
+        error: "liveblocks_unconfigured",
+        message: "LIVEBLOCKS_SECRET_KEY is not configured.",
+      });
+      return;
+    }
+
+    const { Liveblocks } = await import("@liveblocks/node");
+    const liveblocks = new Liveblocks({ secret: secretKey });
+    const ident = await clerkIdentityFromRequest(req);
+    const userId = ident.userId || handle;
+    const name = (handle && handle.includes("@") ? handle.split("@")[0] : handle) || "Collaborator";
+    const color = userColor(handle);
+
+    const session = liveblocks.prepareSession(userId, {
+      userInfo: {
+        name,
+        email: handle,
+        avatar: "",
+        color,
+      },
+    });
+    session.allow(room, session.FULL_ACCESS);
+    const { status, body: authBody } = await session.authorize();
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type, Cookie, X-DataBased-User, X-Databased-User",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+    });
+    res.end(authBody);
+  } catch (e) {
+    const status = e instanceof StoreConfigError ? e.status : 500;
+    send(res, status, { error: e && e.message ? e.message : "liveblocks auth failed" });
+  }
+}
+
 function safeFile(urlPath) {
   const rel = decodeURIComponent(urlPath.split("?")[0]);
   let cleaned = rel === "/" || rel === "" ? "/index.html" : rel;
-  if (cleaned === "/app" || cleaned === "/app/") cleaned = "/app.html";
+  if (cleaned === "/app" || cleaned === "/app/") cleaned = "/index.html";
+  if (cleaned === "/splash" || cleaned === "/splash/") cleaned = "/splash.html";
   const abs = path.normalize(path.join(ROOT, cleaned));
   if (!abs.startsWith(ROOT)) return null;
   return abs;
@@ -191,6 +286,8 @@ const server = http.createServer((req, res) => {
         contactEmail: contactEmail(),
         systemEnv: Boolean(systemEmail()),
         systemHint: systemEnvHint(),
+        liveblocksKey: Boolean(process.env.LIVEBLOCKS_SECRET_KEY || process.env.LIVEBLOCKS_PUBLIC_KEY),
+        liveblocksPublicKey: process.env.LIVEBLOCKS_PUBLIC_KEY || process.env.NEXT_PUBLIC_LIVEBLOCKS_PUBLIC_KEY || "",
       });
     }).catch((e) => {
       send(res, 500, { error: e && e.message ? e.message : "config failed" });
@@ -203,6 +300,10 @@ const server = http.createServer((req, res) => {
   }
   if (url === "/api/access" || url.startsWith("/api/access/")) {
     handleAccessHttp(req, res);
+    return;
+  }
+  if (url === "/api/liveblocks-auth") {
+    handleLiveblocksAuth(req, res);
     return;
   }
   if (req.method !== "GET" && req.method !== "HEAD") {

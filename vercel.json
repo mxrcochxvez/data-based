@@ -9,8 +9,10 @@
     { "source": "/mcp/:path*", "destination": "/api/mcp?orig=/mcp/:path*" },
     { "source": "/api/mcp/:path*", "destination": "/api/mcp?orig=/api/mcp/:path*" },
     { "source": "/api/access/:path*", "destination": "/api/access?orig=/api/access/:path*" },
-    { "source": "/app", "destination": "/app.html" },
-    { "source": "/app/", "destination": "/app.html" }
+    { "source": "/splash", "destination": "/splash.html" },
+    { "source": "/splash/", "destination": "/splash.html" },
+    { "source": "/app", "destination": "/index.html" },
+    { "source": "/app/", "destination": "/index.html" }
   ],
   "functions": {
     "api/mcp.mjs": {
@@ -27,6 +29,10 @@
     },
     "api/config.mjs": {
       "maxDuration": 10,
+      "includeFiles": "web/**"
+    },
+    "api/liveblocks-auth.mjs": {
+      "maxDuration": 15,
       "includeFiles": "web/**"
     }
   }

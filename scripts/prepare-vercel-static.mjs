@@ -32,11 +32,11 @@ copyFiltered(SRC, DEST);
 
 const origin = String(process.env.PUBLIC_ORIGIN || "").replace(/\/+$/, "");
 if (origin) {
-  const htmlPath = path.join(DEST, "index.html");
+  const htmlPath = path.join(DEST, "splash.html");
   let html = fs.readFileSync(htmlPath, "utf8");
   html = html.replace(
-    /(<meta property="og:url" content=")\/(")/,
-    `$1${origin}/$2`
+    /(<meta property="og:url" content=")\/splash(")/,
+    `$1${origin}/splash$2`
   );
   html = html.replaceAll('content="/og.png"', `content="${origin}/og.png"`);
   fs.writeFileSync(htmlPath, html);

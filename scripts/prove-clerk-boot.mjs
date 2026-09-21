@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = fs.readFileSync(path.join(root, "web/js/access.js"), "utf8");
 const boot = fs.readFileSync(path.join(root, "web/js/clerk-boot.js"), "utf8");
-const splash = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
+const splash = fs.readFileSync(path.join(root, "web/splash.html"), "utf8");
 
 const must = [
   ["sets data-clerk-publishable-key on the Clerk script before it runs", /setAttribute\(\s*["']data-clerk-publishable-key["']/],

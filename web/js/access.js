@@ -3,7 +3,8 @@
   const CONTACT = "marcode.chavez.jr@gmail.com";
   const CLERK_JS = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
 
-  const APP_PATH = "/app";
+  const APP_PATH = "/";
+  const SPLASH_PATH = "/splash";
 
   function $(id) {
     return document.getElementById(id);
@@ -13,27 +14,34 @@
     return String(location.pathname || "/").replace(/\/+$/, "") || "/";
   }
 
+  function onSplashPage() {
+    const p = pagePath();
+    return p === SPLASH_PATH || p === "/splash.html";
+  }
+
   function onAppPage() {
     const p = pagePath();
-    return p === APP_PATH || p === "/app.html" || /\/app\/index\.html$/.test(p);
+    return p === "/" || p === "/app" || p === "/app.html" || /\/app\/index\.html$/.test(p);
   }
 
   function appUrl() {
-    return window.location.origin + APP_PATH;
+    return window.location.origin + "/";
   }
 
   function splashUrl() {
-    return window.location.origin + "/";
+    return window.location.origin + SPLASH_PATH;
   }
 
   function goApp() {
     if (onAppPage()) return false;
-    location.replace(appUrl());
+    location.replace(window.location.origin + "/" + (location.search || "") + (location.hash || ""));
     return true;
   }
 
   function goSplash() {
-    if (!onAppPage()) return false;
+    if (onSplashPage()) return false;
+    if (clerkSessionPresent()) return false;
+    if (oauthBounce()) return false;
     location.replace(splashUrl());
     return true;
   }
@@ -193,11 +201,22 @@
   }
 
   function oauthBounce() {
-    return /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(String(location.href));
+    const href = String(location.href);
+    if (/__clerk|clerk_status|clerk_error|external_account_not_found|rotating_token_nonce|created_session/i.test(href)) {
+      return true;
+    }
+    try {
+      const url = new URL(href);
+      if (url.searchParams.get("rotating_token_nonce")) return true;
+    } catch (_) {}
+    return false;
   }
 
   function showWho(msg) {
-    if (onAppPage() && !clerkSessionPresent() && !oauthBounce() && !msg) {
+    if (onAppPage() && clerkSessionPresent()) {
+      return;
+    }
+    if (onAppPage() && !oauthBounce() && !msg) {
       goSplash();
       return;
     }
@@ -479,11 +498,10 @@
   }
 
   function oauthRedirectArgs() {
-    const splash = splashUrl();
     const app = appUrl();
     return {
       strategy: "oauth_google",
-      redirectUrl: splash,
+      redirectUrl: app,
       redirectUrlComplete: app,
     };
   }
@@ -582,7 +600,12 @@
       afterSignInUrl: app,
       afterSignUpUrl: app,
       redirectUrl: app,
+      navigate: function () {
+        if (clerkSessionPresent() && !onAppPage()) goApp();
+        return Promise.resolve();
+      },
     }).then(function () {
+      if (clerkSessionPresent() && !onAppPage()) goApp();
       return clerk;
     }).catch(function (err) {
       if (isRestrictedSignUp(err)) {
@@ -611,12 +634,15 @@
     );
   }
 
+  function googleLabel() {
+    return $("google-signin-label") || $("google-signin");
+  }
+
   function paintOpening() {
     const btn = $("google-signin");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Opening Google…";
-    }
+    if (btn) btn.disabled = true;
+    const label = googleLabel();
+    if (label) label.textContent = "Opening Google…";
     const err = $("who-err");
     if (err) {
       err.hidden = false;
@@ -645,10 +671,9 @@
 
   function resetGoogleButton() {
     const btn = $("google-signin");
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Sign in with Google";
-    }
+    if (btn) btn.disabled = false;
+    const label = googleLabel();
+    if (label) label.textContent = "Sign in with Google";
   }
 
   function signInGoogle() {
@@ -797,13 +822,30 @@
             return finishOAuthBounce(clerk).then(function (ready) {
               if (ready && ready.addListener) {
                 ready.addListener(function (res) {
+                  const user = (res && res.user) || ready.user;
+                  const sess = (res && res.session) || ready.session;
+                  if (!user && !sess && res && res.client && typeof ready.setActive === "function") {
+                    const sid = res.client.lastActiveSessionId
+                      || (res.client.sessions && res.client.sessions[0] && res.client.sessions[0].id);
+                    if (sid && !ready.session) {
+                      ready.setActive({ session: sid }).then(function () {
+                        if (clerkSessionPresent() && !onAppPage()) goApp();
+                        else if (clerkSessionPresent() && session.ready) afterSession();
+                      }).catch(function () {});
+                    }
+                    return;
+                  }
+                  if ((user || sess) && !onAppPage()) {
+                    goApp();
+                    return;
+                  }
                   if (res && res.user && session.ready && (session.denied || !session.hasAppAccess)) afterSession();
                 });
               }
               return activateSession(ready).then(function (live) {
-                return waitForSession(live, onAppPage() ? 3000 : (oauthBounce() ? 3000 : 1000)).then(function () {
+                return waitForSession(live, onAppPage() || oauthBounce() ? 3000 : 1000).then(function () {
               if (!clerkSessionPresent()) {
-                const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
+                const bouncedGoogle = oauthBounce() || /__clerk|clerk_status|clerk_error|external_account_not_found|rotating_token_nonce/i.test(href);
                 if (bouncedGoogle && clerkFail) {
                   showWho(clerkFail);
                 } else if (bouncedGoogle && isRestrictedSignUp()) {

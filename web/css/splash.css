@@ -60,17 +60,44 @@
 }
 
 .splash-google {
-  border: 0;
-  background: transparent;
-  padding: 8px 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 14px 0 12px;
+  border: 1px solid #d2d2cc;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(17, 17, 17, 0.04);
   font: 13px/1 var(--sans);
   font-weight: 550;
-  color: var(--ink);
+  color: #111;
   cursor: pointer;
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.splash-google:hover { color: var(--mute); }
+.splash-google-mark {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: block;
+}
+.splash-google-label {
+  display: block;
+}
+.splash-google:hover {
+  background: #f7f7f4;
+  border-color: #c8c8c2;
+  color: #111;
+}
+.splash-google:active {
+  background: #eee;
+}
+.splash-google:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
 .splash-google:focus-visible {
   outline: 2px solid var(--sel);
   outline-offset: 3px;
@@ -300,8 +327,8 @@
   }
   .splash-bar .wordmark-type { display: inline-flex; }
   .splash-google {
-    min-height: 44px;
-    padding: 12px 4px;
+    height: 44px;
+    padding: 0 16px 0 14px;
   }
   .splash-shell {
     grid-template-columns: 1fr;
