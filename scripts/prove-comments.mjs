@@ -27,10 +27,13 @@ function sliceFn(src, name) {
   return src.slice(start);
 }
 
+const menuCss = fs.readFileSync(path.join(root, "web/css/menu.css"), "utf8");
 const fillCanvas = sliceFn(menuJs, "fillCanvas");
 const fillCard = sliceFn(menuJs, "fillCard");
 const fillMulti = sliceFn(menuJs, "fillMulti");
 const runItem = sliceFn(menuJs, "runItem");
+const paintThreadList = sliceFn(clientJs, "paintThreadList");
+const sendReply = sliceFn(clientJs, "sendReply");
 
 const must = [
   [fillCanvas, "Add comment in fillCanvas", /Add comment/],
@@ -51,16 +54,33 @@ const must = [
   [appHtml, "comment-pins in canvas in app.html", /id="canvas"[\s\S]*id="comment-pins"/],
   [appIndexHtml, "comment-pins in canvas in app/index.html", /id="canvas"[\s\S]*id="comment-pins"/],
   [clientJs, "createThread in liveblocks.js", /createThread/],
+  [clientJs, "createComment in liveblocks.js", /createComment/],
   [clientJs, "getThreads in liveblocks.js", /getThreads/],
   [clientJs, "localStorage databased-comments-open", /databased-comments-open/],
   [selectJs, "select.js ignores comments-panel", /comments-panel/],
   [clientJs, "body.is-comments while sidebar is open", /classList\.toggle\("is-comments"/],
   [appCss, "gated view hides comments-panel", /is-gated \.comments-panel/],
+  [clientJs, "badge lives top-right", /badgeLocation:\s*"top-right"/],
+  [clientJs, "resolveUsers maps comment authors", /resolveUsers:/],
+  [clientJs, "replies skip poll while focused", /replyFocused/],
+  [clientJs, "sendReply posts createComment", /async function sendReply/],
+  [homeHtml, "stable reply composer in index.html", /id="comment-reply"/],
+  [appHtml, "stable reply composer in app.html", /id="comment-reply"/],
+  [appIndexHtml, "stable reply composer in app/index.html", /id="comment-reply"/],
+  [homeHtml, "comments back in index.html", /id="comments-back"/],
+  [appHtml, "comments back in app.html", /id="comments-back"/],
+  [appIndexHtml, "comments back in app/index.html", /id="comments-back"/],
+  [appCss, "badge stays under chrome", /#liveblocks-badge/],
+  [menuCss, "phone comments sit above the tools", /bottom:\s*calc\(66px \+ env\(safe-area-inset-bottom\)\)/],
+  [paintThreadList, "list paint does not rebuild the reply form", /comment-reply/],
+  [sendReply, "sendReply calls createComment", /createComment/],
 ];
 
 let failed = 0;
 for (const [src, label, re] of must) {
-  const ok = re.test(src);
+  const inverted = label.includes("does not");
+  const hit = re.test(src);
+  const ok = inverted ? !hit : hit;
   console.log(ok ? "pass" : "fail", label);
   if (!ok) failed += 1;
 }

@@ -80,9 +80,12 @@ const must = [
   [appHtml, "comment-pins in canvas in app.html", /id="canvas"[\s\S]*id="comment-pins"/],
   [appIndexHtml, "comment-pins in canvas in app/index.html", /id="canvas"[\s\S]*id="comment-pins"/],
   [clientJs, "createThread in liveblocks.js", /createThread/],
+  [clientJs, "createComment in liveblocks.js", /createComment/],
   [clientJs, "getThreads in liveblocks.js", /getThreads/],
   [clientJs, "localStorage databased-comments-open", /databased-comments-open/],
   [selectJs, "select.js ignores comments-panel", /comments-panel/],
+  [clientJs, "badge lives top-right", /badgeLocation:\s*"top-right"/],
+  [clientJs, "sendReply posts createComment", /async function sendReply/],
 ];
 
 let failed = 0;

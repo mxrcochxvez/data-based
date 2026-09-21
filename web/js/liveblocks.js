@@ -29,6 +29,7 @@
   let pendingCursorFrame = 0;
   let lastCursorPt = null;
   const threads = new Map();
+  const userNames = new Map();
   const COMMENTS_OPEN_KEY = "databased-comments-open";
   let commentsOpen = false;
   let commentsSince = null;
@@ -37,6 +38,8 @@
   let composerEl = null;
   let composerAway = null;
   let commentsBound = false;
+  let replyBusy = false;
+  let paintSeq = 0;
 
   function authHeaders() {
     if (window.DataBasedAccess && typeof window.DataBasedAccess.headers === "function") {
@@ -71,7 +74,18 @@
   function getClient() {
     if (client) return client;
     if (!createClient) return null;
-    client = createClient({ authEndpoint });
+    client = createClient({
+      authEndpoint,
+      badgeLocation: "top-right",
+      resolveUsers: async ({ userIds }) => {
+        harvestPresenceNames();
+        rememberSelf();
+        return (userIds || []).map((id) => {
+          const name = authorLabel(id);
+          return { name, id };
+        });
+      },
+    });
     return client;
   }
 
@@ -111,6 +125,93 @@
     }[c]));
   }
 
+  function localPart(value) {
+    const s = String(value || "").trim();
+    if (!s) return "";
+    return s.includes("@") ? s.split("@")[0] : s;
+  }
+
+  function clerkish(value) {
+    return /^user_[A-Za-z0-9]+$/.test(String(value || "").trim());
+  }
+
+  function rememberUser(id, name) {
+    const key = String(id || "").trim();
+    const label = localPart(name);
+    if (!key || !label || clerkish(label)) return;
+    userNames.set(key, label);
+  }
+
+  function localHandle() {
+    const access = window.DataBasedAccess;
+    if (access && typeof access.handle === "function") {
+      try {
+        const handle = String(access.handle() || "");
+        if (handle) return handle;
+      } catch (_) {}
+    }
+    try {
+      const user = window.Clerk && window.Clerk.user;
+      if (user) {
+        return user.fullName || user.firstName || user.username
+          || (user.primaryEmailAddress && user.primaryEmailAddress.emailAddress)
+          || "";
+      }
+    } catch (_) {}
+    return "";
+  }
+
+  function rememberSelf() {
+    const handle = localHandle();
+    const name = localPart(handle) || "You";
+    if (handle) rememberUser(handle, name);
+    try {
+      const user = window.Clerk && window.Clerk.user;
+      if (user && user.id) rememberUser(user.id, user.fullName || user.firstName || user.username || name);
+    } catch (_) {}
+    if (!currentRoom || typeof currentRoom.getSelf !== "function") return name;
+    try {
+      const self = currentRoom.getSelf();
+      if (self && self.id) rememberUser(self.id, (self.info && (self.info.name || self.info.email)) || name);
+    } catch (_) {}
+    return name;
+  }
+
+  function harvestPresenceNames() {
+    rememberSelf();
+    if (!currentRoom || typeof currentRoom.getOthers !== "function") return;
+    try {
+      const others = currentRoom.getOthers();
+      (others || []).forEach((user) => {
+        const info = (user && user.info) || {};
+        rememberUser(user.id, info.name || info.email);
+      });
+    } catch (_) {}
+  }
+
+  function authorLabel(id) {
+    const key = String(id || "").trim();
+    if (!key) return "Collaborator";
+    if (userNames.has(key)) return userNames.get(key);
+    if (clerkish(key)) return "Collaborator";
+    return localPart(key) || "Collaborator";
+  }
+
+  function commentAuthor(note, thread) {
+    if (note && note.userId) {
+      const fromMap = authorLabel(note.userId);
+      if (fromMap && fromMap !== "Collaborator") return fromMap;
+    }
+    const meta = (thread && thread.metadata) || {};
+    if (meta.author) return authorLabel(meta.author);
+    return authorLabel(note && note.userId);
+  }
+
+  function authorInitial(name) {
+    const s = String(name || "C").trim();
+    return (s[0] || "C").toUpperCase();
+  }
+
   function renderPeerCursors(others) {
     const container = cursorsContainer();
     if (!container) return;
@@ -130,6 +231,7 @@
       const info = user.info || {};
       const color = info.color || "#3d7be6";
       const name = info.name || (info.email ? info.email.split("@")[0] : "Collaborator");
+      rememberUser(user.id, name);
 
       let el = existingMap.get(connId);
       if (!cursor) {
@@ -174,6 +276,7 @@
       const info = user.info || {};
       const color = info.color || "#3d7be6";
       const name = info.name || (info.email ? info.email.split("@")[0] : "Collaborator");
+      rememberUser(user.id, name);
       const initial = (name.trim()[0] || "C").toUpperCase();
       return `<span class="presence-avatar" title="${sanitize(name)} (${sanitize(info.email || '')})" style="background-color: ${sanitize(color)};">${sanitize(initial)}</span>`;
     }).join("");
@@ -204,6 +307,7 @@
   }
 
   function onOthersChange(others) {
+    harvestPresenceNames();
     renderPeerCursors(others);
     renderPresenceAvatars(others);
     renderPeerSelections(others);
@@ -292,6 +396,40 @@
       panel.appendChild(list);
     }
     return list;
+  }
+
+  function commentsTitle() {
+    const panel = commentsPanel();
+    return document.getElementById("comments-title") || (panel && panel.querySelector(".comments-head h2"));
+  }
+
+  function commentsBack() {
+    return document.getElementById("comments-back") || (commentsPanel() && commentsPanel().querySelector(".comments-back"));
+  }
+
+  function replyForm() {
+    let form = document.getElementById("comment-reply");
+    const panel = commentsPanel();
+    if (!form && panel) {
+      form = document.createElement("form");
+      form.id = "comment-reply";
+      form.className = "comment-reply";
+      form.hidden = true;
+      form.setAttribute("action", "#");
+      form.innerHTML = '<textarea id="comment-reply-text" class="comment-reply-text" rows="2" placeholder="Reply" aria-label="Reply"></textarea><button type="submit" class="comment-reply-post btn">Reply</button>';
+      panel.appendChild(form);
+    }
+    return form;
+  }
+
+  function replyTextarea() {
+    const form = replyForm();
+    return form ? form.querySelector("textarea") : null;
+  }
+
+  function replyFocused() {
+    const ta = replyTextarea();
+    return Boolean(ta && document.activeElement === ta);
   }
 
   function pinsLayer() {
@@ -435,16 +573,19 @@
 
   async function pollThreads() {
     if (!currentRoom) return;
+    const skipPaint = replyFocused() || replyBusy;
     if (typeof currentRoom.getThreadsSince === "function" && commentsSince) {
       try {
         const result = await currentRoom.getThreadsSince({ since: commentsSince });
         applySinceThreads(result);
-        await paintComments();
+        if (!skipPaint) await paintComments();
+        else paintPins();
         return;
       } catch (err) {
         console.warn("Could not poll comments:", err);
       }
     }
+    if (skipPaint) return;
     await refreshThreads();
   }
 
@@ -475,6 +616,23 @@
       tool.classList.toggle("is-on", commentsOpen);
       tool.setAttribute("aria-pressed", commentsOpen ? "true" : "false");
     }
+    syncCommentsChrome();
+  }
+
+  function syncCommentsChrome() {
+    const panel = commentsPanel();
+    const threadOn = Boolean(openThreadId);
+    if (panel) panel.classList.toggle("is-thread", threadOn);
+    const back = commentsBack();
+    if (back) back.hidden = !threadOn;
+    const title = commentsTitle();
+    if (title) title.textContent = threadOn ? "Thread" : "Comments";
+    const form = replyForm();
+    if (form) {
+      form.hidden = !commentsOpen || !threadOn;
+      if (threadOn) form.setAttribute("data-reply", openThreadId);
+      else form.removeAttribute("data-reply");
+    }
   }
 
   function showComments() {
@@ -483,9 +641,15 @@
   }
 
   function hideComments() {
-    persistCommentsOpen(false);
     openThreadId = "";
+    persistCommentsOpen(false);
     paintPins();
+  }
+
+  function closeThread() {
+    openThreadId = "";
+    syncCommentsChrome();
+    paintComments();
   }
 
   function toggleComments() {
@@ -536,6 +700,7 @@
       const text = ta ? ta.value.trim() : "";
       if (!text || !currentRoom || typeof currentRoom.createThread !== "function") return;
       try {
+        rememberSelf();
         await currentRoom.createThread({
           body: commentBody(text),
           metadata: { x: meta.x, y: meta.y, cardId: meta.cardId },
@@ -584,13 +749,65 @@
     showComments();
   }
 
+  function mergeLocalComment(threadId, comment) {
+    if (!threadId || !comment) return;
+    const thread = threads.get(threadId);
+    if (!thread) return;
+    const notes = Array.isArray(thread.comments) ? thread.comments.slice() : [];
+    if (comment.id && notes.some((c) => c && c.id === comment.id)) return;
+    notes.push(comment);
+    threads.set(threadId, Object.assign({}, thread, {
+      comments: notes,
+      updatedAt: comment.createdAt || new Date(),
+    }));
+  }
+
+  async function sendReply(form) {
+    const box = form || replyForm();
+    if (!box || replyBusy) return;
+    const ta = box.querySelector("textarea");
+    const text = ta ? ta.value.trim() : "";
+    const threadId = box.getAttribute("data-reply") || openThreadId;
+    if (!text || !threadId || !currentRoom) return;
+    const create = currentRoom.createComment;
+    if (typeof create !== "function") {
+      console.warn("Could not reply: createComment is not available");
+      return;
+    }
+    replyBusy = true;
+    const post = box.querySelector(".comment-reply-post, [type='submit']");
+    if (post) post.disabled = true;
+    rememberSelf();
+    try {
+      const comment = await create.call(currentRoom, { threadId, body: commentBody(text) });
+      if (ta) ta.value = "";
+      mergeLocalComment(threadId, comment || {
+        id: "local-" + Date.now(),
+        threadId,
+        userId: (currentRoom.getSelf && currentRoom.getSelf() && currentRoom.getSelf().id) || "",
+        createdAt: new Date(),
+        body: commentBody(text),
+      });
+      await paintComments();
+      await refreshThreads();
+    } catch (err) {
+      console.warn("Could not reply:", err);
+    } finally {
+      replyBusy = false;
+      if (post) post.disabled = false;
+    }
+  }
+
   async function paintComments() {
+    harvestPresenceNames();
+    syncCommentsChrome();
     const list = commentsList();
     if (list) await paintThreadList(list);
     paintPins();
   }
 
   async function paintThreadList(list) {
+    const seq = ++paintSeq;
     if (commentsNeedLiveblocks()) {
       list.innerHTML = '<p class="comments-empty">Comments need Liveblocks.</p>';
       return;
@@ -600,61 +817,70 @@
       list.innerHTML = '<p class="comments-empty">No comments on this board.</p>';
       return;
     }
-    const parts = [];
-    for (const thread of rows) {
+
+    const thread = openThreadId ? threads.get(openThreadId) : null;
+    if (openThreadId && !thread) {
+      openThreadId = "";
+      syncCommentsChrome();
+    }
+    if (openThreadId && thread) {
       const notes = liveComments(thread);
-      const first = notes[0];
-      const preview = await bodyText(first && first.body);
-      const author = first && first.userId ? first.userId : "";
-      const when = commentTime((first && first.createdAt) || thread.createdAt);
-      const resolved = thread.resolved ? " is-resolved" : "";
-      const on = String(thread.id) === openThreadId ? " is-on" : "";
-      parts.push(
-        `<article class="comment-row${resolved}${on}" data-thread-id="${sanitize(thread.id)}">` +
-        `<button type="button" class="comment-row-hit" data-open-thread="${sanitize(thread.id)}">` +
-        `<span class="comment-row-preview">${sanitize(preview || "Comment")}</span>` +
-        `<span class="comment-row-meta">${sanitize(author)}${author && when ? " · " : ""}${sanitize(when)}</span>` +
-        `</button>`
-      );
-      if (String(thread.id) === openThreadId) {
-        parts.push('<div class="comment-thread">');
-        for (const note of notes) {
-          const text = await bodyText(note.body);
-          parts.push(
-            `<p class="comment-note"><span class="comment-note-who">${sanitize(note.userId || "")}</span>` +
-            `<span class="comment-note-when">${sanitize(commentTime(note.createdAt))}</span>` +
-            `<span class="comment-note-body">${sanitize(text)}</span></p>`
-          );
-        }
+      const parts = ['<div class="comment-thread">'];
+      if (!notes.length) {
+        parts.push('<p class="comments-empty">No replies yet.</p>');
+      }
+      for (const note of notes) {
+        const text = await bodyText(note.body);
+        if (seq !== paintSeq) return;
+        const who = commentAuthor(note, thread);
         parts.push(
-          `<form class="comment-reply" data-reply="${sanitize(thread.id)}">` +
-          `<textarea class="comment-reply-text" rows="2" placeholder="Reply"></textarea>` +
-          `<button type="submit" class="comment-reply-post">Reply</button></form></div>`
+          `<article class="comment-note">` +
+          `<span class="comment-note-face" aria-hidden="true">${sanitize(authorInitial(who))}</span>` +
+          `<span class="comment-note-who">${sanitize(who)}</span>` +
+          `<span class="comment-note-when">${sanitize(commentTime(note.createdAt))}</span>` +
+          `<p class="comment-note-body">${sanitize(text)}</p>` +
+          `</article>`
         );
       }
-      parts.push("</article>");
+      parts.push("</div>");
+      if (seq !== paintSeq) return;
+      list.innerHTML = parts.join("");
+      bindThreadList(list);
+      return;
     }
+
+    const parts = [];
+    for (const row of rows) {
+      const notes = liveComments(row);
+      const first = notes[0];
+      const last = notes[notes.length - 1] || first;
+      const preview = await bodyText((last && last.body) || (first && first.body));
+      if (seq !== paintSeq) return;
+      const author = commentAuthor(first, row);
+      const when = commentTime((last && last.createdAt) || row.updatedAt || row.createdAt);
+      const extra = notes.length > 1 ? notes.length + " comments" : "Comment";
+      const resolved = row.resolved ? " is-resolved" : "";
+      parts.push(
+        `<article class="comment-row${resolved}" data-thread-id="${sanitize(row.id)}">` +
+        `<button type="button" class="comment-row-hit" data-open-thread="${sanitize(row.id)}">` +
+        `<span class="comment-row-preview">${sanitize(preview || "Comment")}</span>` +
+        `<span class="comment-row-meta">${sanitize(author)}${author && when ? " · " : ""}${sanitize(when)} · ${sanitize(extra)}</span>` +
+        `</button></article>`
+      );
+    }
+    if (seq !== paintSeq) return;
     list.innerHTML = parts.join("");
-    if (!list.dataset.bound) {
-      list.dataset.bound = "1";
-      list.addEventListener("click", (ev) => {
-        const hit = ev.target.closest("[data-open-thread]");
-        if (!hit || !list.contains(hit)) return;
-        openThread(hit.getAttribute("data-open-thread"));
-      });
-      list.addEventListener("submit", (ev) => {
-        const form = ev.target.closest("form[data-reply]");
-        if (!form || !list.contains(form)) return;
-        ev.preventDefault();
-        const ta = form.querySelector("textarea");
-        const text = ta ? ta.value.trim() : "";
-        const threadId = form.getAttribute("data-reply");
-        if (!text || !threadId || !currentRoom || typeof currentRoom.createComment !== "function") return;
-        currentRoom.createComment({ threadId, body: commentBody(text) }).then(() => refreshThreads()).catch((err) => {
-          console.warn("Could not reply:", err);
-        });
-      });
-    }
+    bindThreadList(list);
+  }
+
+  function bindThreadList(list) {
+    if (!list || list.dataset.bound) return;
+    list.dataset.bound = "1";
+    list.addEventListener("click", (ev) => {
+      const hit = ev.target.closest("[data-open-thread]");
+      if (!hit || !list.contains(hit)) return;
+      openThread(hit.getAttribute("data-open-thread"));
+    });
   }
 
   function paintPins() {
@@ -721,6 +947,38 @@
         });
       }
     }
+    const back = commentsBack();
+    if (back) {
+      back.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        closeThread();
+      });
+    }
+    const form = replyForm();
+    if (form && !form.dataset.bound) {
+      form.dataset.bound = "1";
+      form.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        sendReply(form);
+      });
+      const post = form.querySelector(".comment-reply-post");
+      if (post) {
+        post.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          sendReply(form);
+        });
+      }
+      const ta = form.querySelector("textarea");
+      if (ta) {
+        ta.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey || !ev.shiftKey)) {
+            if (ev.shiftKey) return;
+            ev.preventDefault();
+            sendReply(form);
+          }
+        });
+      }
+    }
     persistCommentsOpen(readCommentsOpen());
     paintComments();
   }
@@ -745,6 +1003,7 @@
       currentRoom = room;
       leaveCurrentRoom = leave;
 
+      rememberSelf();
       room.subscribe("others", onOthersChange);
       room.subscribe("event", onRemoteEvent);
 
@@ -762,6 +1021,7 @@
     commentsSince = null;
     openThreadId = "";
     closeComposer();
+    syncCommentsChrome();
     if (leaveCurrentRoom) {
       try { leaveCurrentRoom(); } catch (_) {}
     }
