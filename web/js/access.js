@@ -62,9 +62,9 @@
     };
     try {
       const clerk = global.Clerk;
-      if (clerk && clerk.user && !clerk.session) {
-        const sessions = clerk.client && clerk.client.sessions;
-        const sid = (clerk.client && clerk.client.lastActiveSessionId)
+      if (clerk && !clerk.session && clerk.client) {
+        const sessions = clerk.client.sessions;
+        const sid = (clerk.client.lastActiveSessionId)
           || (sessions && sessions[0] && sessions[0].id);
         if (sid && typeof clerk.setActive === "function") {
           await clerk.setActive({ session: sid });
@@ -159,20 +159,36 @@
     if (clerkSessionPresent()) return Promise.resolve(clerk);
     return new Promise(function (resolve) {
       let settled = false;
+      let poll = null;
+      let t = null;
       const done = function () {
         if (settled) return;
         settled = true;
+        if (poll) clearInterval(poll);
+        if (t) clearTimeout(t);
         resolve(clerk);
       };
-      const t = setTimeout(done, ms || 400);
+      t = setTimeout(done, ms || (onAppPage() ? 3000 : 1000));
       if (clerk && typeof clerk.addListener === "function") {
         clerk.addListener(function (res) {
           if (res && (res.user || res.session)) {
-            clearTimeout(t);
             done();
+            return;
+          }
+          if (res && res.client && typeof clerk.setActive === "function") {
+            const sid = res.client.lastActiveSessionId
+              || (res.client.sessions && res.client.sessions[0] && res.client.sessions[0].id);
+            if (sid && !res.session) {
+              clerk.setActive({ session: sid }).then(function () {
+                if (clerkSessionPresent()) done();
+              }).catch(function () {});
+            }
           }
         });
       }
+      poll = setInterval(function () {
+        if (clerkSessionPresent()) done();
+      }, 50);
     });
   }
 
@@ -542,7 +558,7 @@
     if (signUp && typeof signUp.create === "function") {
       return signUp.create({ transfer: true }).then(function (su) {
         if (su && su.status === "complete" && su.createdSessionId && typeof clerk.setActive === "function") {
-          return clerk.setActive({ session: su.createdSessionId }).then(function () { return clerk; });
+          return clerk.setActive({ session: su.createdSessionId, redirectUrl: appUrl() }).then(function () { return clerk; });
         }
         const run = su && typeof su.authenticateWithRedirect === "function"
           ? su.authenticateWithRedirect.bind(su)
@@ -558,7 +574,15 @@
     if (!oauthBounce() || typeof clerk.handleRedirectCallback !== "function") {
       return Promise.resolve(clerk);
     }
-    return clerk.handleRedirectCallback({ transferable: true }).then(function () {
+    const app = appUrl();
+    return clerk.handleRedirectCallback({
+      transferable: true,
+      signInForceRedirectUrl: app,
+      signUpForceRedirectUrl: app,
+      afterSignInUrl: app,
+      afterSignUpUrl: app,
+      redirectUrl: app,
+    }).then(function () {
       return clerk;
     }).catch(function (err) {
       if (isRestrictedSignUp(err)) {
@@ -619,10 +643,19 @@
     });
   }
 
+  function resetGoogleButton() {
+    const btn = $("google-signin");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Sign in with Google";
+    }
+  }
+
   function signInGoogle() {
     paintOpening();
     googleReadyThen(function (clerk) {
     if (!canRedirect(clerk)) {
+      resetGoogleButton();
       const err = $("who-err");
       if (err) {
         err.hidden = false;
@@ -637,6 +670,7 @@
       return;
     }
     return startGoogleOAuth(clerk, true).catch(function (err) {
+      resetGoogleButton();
       if (isRestrictedSignUp(err)) {
         const box = $("who-err");
         if (box) {
@@ -649,6 +683,7 @@
         return startGoogleOAuth(clerk, true);
       }
       return startGoogleOAuth(clerk, false).catch(function (second) {
+        resetGoogleButton();
         const box = $("who-err");
         if (box) {
           box.hidden = false;
@@ -766,7 +801,7 @@
                 });
               }
               return activateSession(ready).then(function (live) {
-                return waitForSession(live, onAppPage() ? 2500 : 400).then(function () {
+                return waitForSession(live, onAppPage() ? 3000 : (oauthBounce() ? 3000 : 1000)).then(function () {
               if (!clerkSessionPresent()) {
                 const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
                 if (bouncedGoogle && clerkFail) {
