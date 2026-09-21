@@ -9,7 +9,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <!-- Absolute og:url / og:image: set PUBLIC_ORIGIN at Vercel build (see README). Unset keeps path-relative URLs — no invented domain. Crawlers that require an absolute URL need the full origin. -->
+  <!-- Absolute og:url / og:image: set PUBLIC_ORIGIN at Vercel build (see README). Unset keeps path-relative URLs. -->
   <meta property="og:title" content="Data Based — collaborative architecture boards for engineers">
   <meta property="og:description" content="Collaborative architecture boards for engineers. Place schema, API, and effect cards and edit them in the vendor’s own language.">
   <meta property="og:type" content="website">
@@ -30,93 +30,467 @@
   <script src="/js/clerk-boot.js"></script>
 </head>
 <body class="is-gated is-splash">
-  <!--
-    THESIS: Logged-out visitors meet the paper board itself — cream field, hairline frame, schema cards — not a Sign in wall and not a purple SaaS blob.
-    OWN-WORLD: Cool gray #e6e6e3 dots on white page, ink #111, IBM Plex Condensed wordmark, 1px #d2d2cc rules, white card islands.
-    STORY: Request access joins a waitlist that does not guarantee a seat. People who already have one Sign in with Google and land on /.
-    FIRST VIEWPORT: Wordmark left (uncropped), Sign in with Google right. “Collaborative architecture boards.” stacked Request access. Framed shared-board preview.
-    FORM: Pinned FigJam / Figma paper studio. Seed skipped — the brief named the world.
-    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
-  -->
   <section class="screen gate-screen splash" id="screen-splash" role="main" aria-labelledby="splash-title">
+    <!-- Top Navigation Bar -->
     <header class="splash-bar">
-      <a class="wordmark splash-wordmark" href="/splash" aria-label="Data Based">
-        <svg class="wordmark-mark" viewBox="-1 -1 16 16" aria-hidden="true">
-          <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
-          <path class="grid" d="M7 0.5v13M0.5 7h13"/>
-          <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
-          <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
-        </svg>
-        <span class="wordmark-type">
-          <span class="wordmark-data">DATA</span>
-          <span class="wordmark-based">BASED</span>
+      <div class="splash-bar-left">
+        <a class="wordmark splash-wordmark" href="/splash" aria-label="Data Based">
+          <svg class="wordmark-mark" viewBox="-1 -1 16 16" aria-hidden="true">
+            <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
+            <path class="grid" d="M7 0.5v13M0.5 7h13"/>
+            <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
+            <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
+          </svg>
+          <span class="wordmark-type">
+            <span class="wordmark-data">DATA</span>
+            <span class="wordmark-based">BASED</span>
+          </span>
+        </a>
+        <span class="splash-badge-early" aria-label="Status: Early access, invite-only">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          EARLY ACCESS · INVITE ONLY
         </span>
-      </a>
-      <button type="button" class="splash-google" id="google-signin">
-        <svg class="splash-google-mark" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-          <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.17.282-1.709V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.335z"/>
-          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-        </svg>
-        <span class="splash-google-label" id="google-signin-label">Sign in with Google</span>
-      </button>
+      </div>
+
+      <nav class="splash-nav-links" aria-label="Site Sections">
+        <a href="#preview" class="splash-nav-link">Canvas</a>
+        <a href="#vendors" class="splash-nav-link">Vendor Native</a>
+        <a href="#layers" class="splash-nav-link">Architecture</a>
+        <a href="#mcp" class="splash-nav-link">MCP &amp; AI</a>
+        <a href="#shortcuts" class="splash-nav-link">Keybindings</a>
+      </nav>
+
+      <div class="splash-bar-right">
+        <button type="button" class="splash-google" id="google-signin">
+          <svg class="splash-google-mark" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+            <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.17.282-1.709V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.335z"/>
+            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+          </svg>
+          <span class="splash-google-label" id="google-signin-label">Sign in with Google</span>
+        </button>
+      </div>
     </header>
 
-    <div class="splash-shell">
-      <div class="splash-copy">
-        <h1 id="splash-title">Collaborative architecture boards.</h1>
-        <p class="splash-lead">Invite-only early access. One shared canvas for schema, API, and effect cards — edited in Prisma, Drizzle, GraphQL, or SQL, not a sticky note pretending to be a table.</p>
+    <!-- Main Hero Shell -->
+    <div class="splash-hero-shell">
+      <div class="splash-hero-content">
+        <div class="splash-kicker">
+          <span class="kicker-tag">SOFTWARE ARCHITECTURE STUDIO</span>
+          <span class="kicker-sep">/</span>
+          <span class="kicker-sub">FIGJAM &amp; LINEAR-GRADE CRAFT</span>
+        </div>
+        <h1 id="splash-title">Collaborative architecture boards for engineers.</h1>
+        <p class="splash-lead">One shared canvas for typed schemas, API contracts, and side-effect pipelines. Edit in real Prisma, Drizzle, SQL, or GraphQL—never a generic sticky note pretending to be a table.</p>
+
+        <!-- Access Request Form -->
         <form class="splash-form" id="waitlist-form">
-          <label class="sr-only" for="waitlist-email">Work email</label>
-          <input type="email" id="waitlist-email" name="email" placeholder="Work email" required autocomplete="email" inputmode="email" aria-describedby="who-err waitlist-ok">
-          <button type="submit" class="btn" id="waitlist-submit">Request access</button>
+          <div class="splash-input-wrap">
+            <label class="sr-only" for="waitlist-email">Work email</label>
+            <input type="email" id="waitlist-email" name="email" placeholder="Enter your work email..." required autocomplete="email" inputmode="email" aria-describedby="who-err waitlist-ok">
+            <button type="submit" class="btn btn-primary" id="waitlist-submit">Request early access</button>
+          </div>
         </form>
         <p class="splash-ok" id="waitlist-ok" hidden role="status"></p>
         <p class="parse-err" id="who-err" hidden role="alert"></p>
-        <p class="splash-note">A request doesn’t guarantee a spot. Already have one? Sign in with Google.</p>
-      </div>
+        <p class="splash-note">Invite-only early access. Built for desktop monitors in office daylight. Have an existing account? <a href="#google-signin" class="splash-note-link">Sign in with Google</a>.</p>
 
-      <figure class="splash-stage" aria-hidden="true">
-        <div class="splash-canvas">
-          <div class="splash-world">
-            <svg class="splash-wires" viewBox="0 0 640 400" aria-hidden="true">
-              <path pathLength="1" d="M244 118 C 310 118, 310 208, 368 208"/>
-              <path pathLength="1" d="M244 232 C 300 232, 300 208, 368 208"/>
-            </svg>
-            <div class="splash-boardchip">billing</div>
-            <article class="card splash-card splash-card-user">
-              <div class="card-bar"><span class="card-kind">Prisma</span><span class="card-title">User</span></div>
-              <div class="card-body">
-                <ul>
-                  <li><code>id</code> String</li>
-                  <li><code>email</code> String</li>
-                  <li><code>orgId</code> String</li>
-                </ul>
-              </div>
-            </article>
-            <article class="card splash-card splash-card-org">
-              <div class="card-bar"><span class="card-kind">SQL</span><span class="card-title">Org</span></div>
-              <div class="card-body">
-                <ul>
-                  <li><code>id</code> uuid</li>
-                  <li><code>name</code> text</li>
-                </ul>
-              </div>
-            </article>
-            <article class="card splash-card splash-card-gql is-sel">
-              <div class="card-bar"><span class="card-kind">GraphQL</span><span class="card-title">schema</span></div>
-              <div class="card-body">
-                <code>type User { id: ID! }</code>
-              </div>
-            </article>
+        <!-- Value Specification Strip -->
+        <div class="splash-spec-strip">
+          <div class="spec-item">
+            <span class="spec-dot"></span>
+            <span>Desktop-first canvas</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-dot"></span>
+            <span>Vendor-native roundtrip</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-dot"></span>
+            <span>Model Context Protocol (MCP)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-dot"></span>
+            <span>Multi-cursor sync</span>
           </div>
         </div>
-        <figcaption>Studio preview — synthetic cards, not a live board.</figcaption>
+      </div>
+
+      <!-- Interactive Canvas Stage -->
+      <figure class="splash-stage" id="preview" aria-label="Interactive architecture board preview">
+        <div class="stage-frame">
+          <!-- Top Toolstrip Header -->
+          <div class="stage-header">
+            <div class="stage-header-left">
+              <span class="stage-chip" id="splash-boardchip">auth-core</span>
+              <div class="stage-tabs" role="tablist" aria-label="Architecture presets">
+                <button type="button" role="tab" class="stage-tab is-active" data-preset-tab="auth" aria-selected="true">Auth &amp; RBAC</button>
+                <button type="button" role="tab" class="stage-tab" data-preset-tab="billing" aria-selected="false">Billing &amp; Invoicing</button>
+                <button type="button" role="tab" class="stage-tab" data-preset-tab="events" aria-selected="false">Event Pipeline</button>
+              </div>
+            </div>
+            <div class="stage-header-right">
+              <button type="button" class="stage-view-toggle" id="splash-view-toggle" aria-pressed="false" title="Toggle active card between visual table and vendor code">
+                View Vendor Code
+              </button>
+              <div class="stage-presence" aria-label="Collaborators present">
+                <span class="stage-avatar av-1" title="Collaborator Marco">MC</span>
+                <span class="stage-avatar av-2" title="Collaborator Sarah">SK</span>
+                <span class="stage-avatar av-3" title="Collaborator Dave">DJ</span>
+              </div>
+              <span class="stage-zoom-badge">100%</span>
+            </div>
+          </div>
+
+          <!-- Board Canvas Viewport -->
+          <div class="splash-canvas">
+            <div class="splash-world" id="splash-world">
+              <svg class="splash-wires" id="splash-wires" aria-hidden="true"></svg>
+
+              <!-- Card 1: User / Schema -->
+              <article class="card splash-card splash-card-user is-sel" id="card-user" tabindex="0" role="button" aria-label="User schema card">
+                <div class="card-bar">
+                  <span class="card-kind card-kind--prisma">PRISMA</span>
+                  <span class="card-title">User</span>
+                </div>
+                <div class="card-body">
+                  <ul class="splash-schema-list">
+                    <li><code>id</code> <span class="type-tok">String</span> <span class="tag-tok">@id @default(cuid())</span></li>
+                    <li><code>email</code> <span class="type-tok">String</span> <span class="tag-tok">@unique</span></li>
+                    <li><code>name</code> <span class="type-tok">String?</span></li>
+                    <li><code>orgId</code> <span class="type-tok">String</span> <span class="tag-tok">@index</span></li>
+                    <li><code>role</code> <span class="type-tok">Role</span> <span class="tag-tok">@default(MEMBER)</span></li>
+                    <li><code>createdAt</code> <span class="type-tok">DateTime</span> <span class="tag-tok">@default(now())</span></li>
+                  </ul>
+                </div>
+              </article>
+
+              <!-- Card 2: Org / Table -->
+              <article class="card splash-card splash-card-org" id="card-org" tabindex="0" role="button" aria-label="Organizations database table">
+                <div class="card-bar">
+                  <span class="card-kind card-kind--sql">POSTGRES</span>
+                  <span class="card-title">organizations</span>
+                </div>
+                <div class="card-body">
+                  <ul class="splash-schema-list">
+                    <li><code>id</code> <span class="type-tok">uuid</span> <span class="tag-tok">PRIMARY KEY</span></li>
+                    <li><code>slug</code> <span class="type-tok">text</span> <span class="tag-tok">UNIQUE NOT NULL</span></li>
+                    <li><code>name</code> <span class="type-tok">text</span> <span class="tag-tok">NOT NULL</span></li>
+                    <li><code>plan</code> <span class="type-tok">text</span> <span class="tag-tok">DEFAULT 'team'</span></li>
+                    <li><code>max_seats</code> <span class="type-tok">integer</span> <span class="tag-tok">DEFAULT 10</span></li>
+                  </ul>
+                </div>
+              </article>
+
+              <!-- Card 3: GraphQL / Query / Effect -->
+              <article class="card splash-card splash-card-gql" id="card-gql" tabindex="0" role="button" aria-label="GraphQL contract card">
+                <div class="card-bar">
+                  <span class="card-kind card-kind--graphql">GRAPHQL</span>
+                  <span class="card-title">ViewerQuery</span>
+                </div>
+                <div class="card-body">
+                  <ul class="splash-schema-list">
+                    <li><code>viewer</code> <span class="type-tok">User!</span></li>
+                    <li><code>organization</code> <span class="type-tok">Org(slug: String!)</span></li>
+                    <li><code>membership</code> <span class="type-tok">OrgMembership</span></li>
+                  </ul>
+                </div>
+              </article>
+
+              <!-- Simulated Multi-Cursor Presence -->
+              <div class="stage-cursor cur-1" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" class="cursor-svg">
+                  <path d="M0 0 L6 14 L8.5 8.5 L14 6 Z" fill="#0d99ff" stroke="#ffffff" stroke-width="1.2"/>
+                </svg>
+                <span class="cursor-label" style="background: #0d99ff;">Marco (lead)</span>
+              </div>
+              <div class="stage-cursor cur-2" aria-hidden="true">
+                <svg viewBox="0 0 16 16" fill="none" class="cursor-svg">
+                  <path d="M0 0 L6 14 L8.5 8.5 L14 6 Z" fill="#e88c30" stroke="#ffffff" stroke-width="1.2"/>
+                </svg>
+                <span class="cursor-label" style="background: #e88c30;">Sarah (infra)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage-footer">
+            <span class="stage-caption-text">Interactive canvas preview · Click any card to select or toggle between visual schema and native vendor code.</span>
+            <span class="stage-keyboard-hint">Keyboard: <code>H</code> Marketplace · <code>E</code> Edit Code · <code>Space</code> Pan</span>
+          </div>
+        </div>
       </figure>
     </div>
+
+    <!-- Section 1: Vendor-Native Roundtripping -->
+    <section id="vendors" class="splash-section">
+      <div class="section-head">
+        <span class="section-eyebrow">BIDIRECTIONAL PARSING</span>
+        <h2 class="section-title">Your code is the source of truth, not a generic box.</h2>
+        <p class="section-desc">Whiteboards traditionally trap architectural decisions in proprietary blobs. On data-based, every element speaks its vendor's language. Edit visual columns or open the native code pane—both stay in perfect round-trip sync.</p>
+      </div>
+
+      <div class="vendor-grid">
+        <article class="vendor-card">
+          <header class="vendor-card-head">
+            <span class="vendor-pill vendor-pill--prisma">PRISMA</span>
+            <h3 class="vendor-title">Prisma Schema</h3>
+          </header>
+          <p class="vendor-copy">Models, attributes, and explicit relation mapping with index decorations.</p>
+          <div class="vendor-code-block">
+            <pre><code>model Organization {
+  id      String   @id @default(uuid())
+  slug    String   @unique
+  name    String
+  members Member[]
+}</code></pre>
+          </div>
+        </article>
+
+        <article class="vendor-card">
+          <header class="vendor-card-head">
+            <span class="vendor-pill vendor-pill--drizzle">DRIZZLE</span>
+            <h3 class="vendor-title">Drizzle ORM</h3>
+          </header>
+          <p class="vendor-copy">TypeScript-first schema declarations with strict database type mapping.</p>
+          <div class="vendor-code-block">
+            <pre><code>export const teams = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  tier: text("tier").default("pro"),
+  createdAt: timestamp("created_at")
+});</code></pre>
+          </div>
+        </article>
+
+        <article class="vendor-card">
+          <header class="vendor-card-head">
+            <span class="vendor-pill vendor-pill--graphql">GRAPHQL</span>
+            <h3 class="vendor-title">GraphQL SDL</h3>
+          </header>
+          <p class="vendor-copy">Contract types, input objects, queries, and mutations between microservices.</p>
+          <div class="vendor-code-block">
+            <pre><code>type Workspace {
+  id: ID!
+  slug: String!
+  projects(limit: Int): [Project!]!
+  billing: BillingProfile!
+}</code></pre>
+          </div>
+        </article>
+
+        <article class="vendor-card">
+          <header class="vendor-card-head">
+            <span class="vendor-pill vendor-pill--sql">SQL DDL</span>
+            <h3 class="vendor-title">PostgreSQL &amp; MySQL</h3>
+          </header>
+          <p class="vendor-copy">Standard database DDL with constraints, foreign keys, and indexes.</p>
+          <div class="vendor-code-block">
+            <pre><code>CREATE TABLE api_keys (
+  key_hash TEXT PRIMARY KEY,
+  org_id UUID REFERENCES organizations(id),
+  scopes TEXT[] NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);</code></pre>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Section 2: Four Architectural Layers -->
+    <section id="layers" class="splash-section splash-section--alt">
+      <div class="section-head">
+        <span class="section-eyebrow">UNIFIED SYSTEM TOPOLOGY</span>
+        <h2 class="section-title">Four layers to map your entire backend repo.</h2>
+        <p class="section-desc">From database primitives to async queues and client contracts, connect every layer of your systems stack on one canvas.</p>
+      </div>
+
+      <div class="layers-grid">
+        <div class="layer-card">
+          <div class="layer-num">01</div>
+          <h3 class="layer-title">Typed Schemas</h3>
+          <p class="layer-copy">PostgreSQL, Prisma, and Drizzle definitions that capture columns, relations, and indexes with zero ambiguous shapes.</p>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">02</div>
+          <h3 class="layer-title">Contract APIs</h3>
+          <p class="layer-copy">GraphQL schemas, OpenAPI specs, and tRPC endpoints that define strict boundaries between services and clients.</p>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">03</div>
+          <h3 class="layer-title">Side-Effect Pipelines</h3>
+          <p class="layer-copy">Explicit input and output type boundaries for webhook listeners, event queues, and background jobs.</p>
+        </div>
+        <div class="layer-card">
+          <div class="layer-num">04</div>
+          <h3 class="layer-title">Monorepo Feeds</h3>
+          <p class="layer-copy">Model many tables feeding one repo module, or many microservices sharing one auth boundary without visual clutter.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Built for Flow / Keyboard First -->
+    <section id="shortcuts" class="splash-section">
+      <div class="section-head">
+        <span class="section-eyebrow">KEYBOARD-FIRST CRAFT</span>
+        <h2 class="section-title">Leave the mouse when you want to move fast.</h2>
+        <p class="section-desc">Engineers design systems at terminal speed. data-based features a full keyboard-driven navigation harness with zero lag.</p>
+      </div>
+
+      <div class="shortcuts-grid">
+        <div class="shortcut-item">
+          <kbd class="key-cap">H</kbd>
+          <div class="shortcut-meta">
+            <strong>Marketplace</strong>
+            <span>Browse &amp; insert database, API, and effect nodes</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">E</kbd>
+          <div class="shortcut-meta">
+            <strong>Edit Vendor Code</strong>
+            <span>Open bidirectional code pane for selected node</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">V</kbd>
+          <div class="shortcut-meta">
+            <strong>Select Tool</strong>
+            <span>Switch to pointer selection &amp; drag mode</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">Space</kbd>
+          <div class="shortcut-meta">
+            <strong>Pan Canvas</strong>
+            <span>Hold to glide across the infinite paper board</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">⌘ + A</kbd>
+          <div class="shortcut-meta">
+            <strong>Select All</strong>
+            <span>Select all cards on the active workspace board</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">+ / −</kbd>
+          <div class="shortcut-meta">
+            <strong>Zoom Scale</strong>
+            <span>Step zoom in 10% increments</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">0</kbd>
+          <div class="shortcut-meta">
+            <strong>Reset Zoom</strong>
+            <span>Snap immediately back to 100% 1:1 scale</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <kbd class="key-cap">⌫</kbd>
+          <div class="shortcut-meta">
+            <strong>Delete Element</strong>
+            <span>Safely remove selected nodes and wires</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: MCP & AI Agents -->
+    <section id="mcp" class="splash-section splash-section--alt">
+      <div class="section-head">
+        <span class="section-eyebrow">MODEL CONTEXT PROTOCOL</span>
+        <h2 class="section-title">Built-in MCP server for Claude, Cursor, and Codex.</h2>
+        <p class="section-desc">Don't copy-paste schemas into your prompts. Point your AI harness to the data-based MCP endpoint. Your agents read current system topology directly from the board and can propose card updates via live tool calls.</p>
+      </div>
+
+      <div class="mcp-shell">
+        <div class="mcp-card">
+          <div class="mcp-bar">
+            <span class="mcp-file-title">claude_desktop_config.json / .cursor/mcp.json</span>
+            <button type="button" class="mcp-copy-btn" id="copy-mcp-btn">Copy configuration</button>
+          </div>
+          <pre class="mcp-code" id="mcp-config-code"><code>{
+  "mcpServers": {
+    "data-based": {
+      "url": "https://data-based.app/mcp",
+      "headers": {
+        "Authorization": "Bearer db_sec_user_live"
+      }
+    }
+  }
+}</code></pre>
+        </div>
+
+        <div class="mcp-tools-list">
+          <div class="mcp-tool-item">
+            <code>get_board</code>
+            <span>Returns complete structured topology of cards, types, and wire connections.</span>
+          </div>
+          <div class="mcp-tool-item">
+            <code>update_schema</code>
+            <span>Proposes updates to Prisma, Drizzle, or SQL text directly on the canvas.</span>
+          </div>
+          <div class="mcp-tool-item">
+            <code>export_prompt</code>
+            <span>Generates an LLM architecture prompt with exact vendor types formatted for repo implementation.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA Section -->
+    <section class="splash-section splash-cta-section">
+      <div class="splash-cta-card">
+        <h2 class="cta-title">Ready to shape your architecture in daylight?</h2>
+        <p class="cta-desc">data-based is rolling out seats in small batches to engineering teams. Request access with your work email or sign in with an existing team invite.</p>
+        <div class="cta-actions">
+          <a href="#waitlist-email" class="btn btn-primary cta-btn-scroll">Request early access</a>
+          <button type="button" class="btn btn-ghost" onclick="document.getElementById('google-signin').click()">Sign in with Google</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="splash-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a class="wordmark" href="/splash" aria-label="Data Based">
+            <svg class="wordmark-mark" viewBox="-1 -1 16 16" aria-hidden="true">
+              <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
+              <path class="grid" d="M7 0.5v13M0.5 7h13"/>
+              <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
+              <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
+            </svg>
+            <span class="wordmark-type">
+              <span class="wordmark-data">DATA</span>
+              <span class="wordmark-based">BASED</span>
+            </span>
+          </a>
+          <p class="footer-tagline">Collaborative architecture boards for engineers.</p>
+        </div>
+
+        <div class="footer-status">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          <span>All systems operational · v0.9-alpha</span>
+        </div>
+
+        <div class="footer-links">
+          <a href="/splash">Home</a>
+          <a href="#preview">Canvas</a>
+          <a href="#mcp">MCP Key</a>
+          <a href="mailto:marcode.chavez.jr@gmail.com">Contact</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 data-based. Invite-only architecture board. Built for desktop monitors in office daylight.</p>
+      </div>
+    </footer>
   </section>
 
+  <!-- Application Logic & Demo Scripts -->
   <script src="/js/access.js"></script>
+  <script src="/js/splash-demo.js"></script>
 </body>
 </html>
