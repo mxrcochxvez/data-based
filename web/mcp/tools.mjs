@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import {
   accessibleBoards,
@@ -18,8 +17,14 @@ import { boardFromIngest, ingestSummary, normalizeIngest } from "./ingest.mjs";
 import { boardPng } from "./render.mjs";
 import { getJson, setJson } from "./backend.mjs";
 
-const require = createRequire(import.meta.url);
-const Export = require("../js/export.js");
+async function exportPrompt(board) {
+  await import("../js/export.js");
+  const helpers = globalThis.DataBasedExport;
+  if (!helpers || typeof helpers.buildPrompt !== "function") {
+    throw new Error("export helpers unavailable");
+  }
+  return helpers.buildPrompt(board);
+}
 
 async function readIngests(dataDir) {
   try {
@@ -416,7 +421,7 @@ async function callTool(name, args, ctx) {
     const found = await needBoard(ctx, a.board_id);
     if (found.error) return found.error;
     if (!found.board) return err("No accessible board.");
-    const md = Export.buildPrompt(found.board);
+    const md = await exportPrompt(found.board);
     return {
       content: [{ type: "text", text: md }],
     };

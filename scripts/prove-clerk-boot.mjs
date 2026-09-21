@@ -15,6 +15,9 @@ const must = [
   ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
   ["loads Clerk JS from the instance frontend API host", /clerkScriptUrl/],
   ["requires a server-verified email before the invite gate", /if \(!session\.verified\)/],
+  ["sends Clerk getToken as Authorization Bearer", /Authorization\s*=\s*["']Bearer /],
+  ["asks Clerk getToken with skipCache", /getToken\(\s*\{\s*skipCache:\s*true/],
+  ["sends cookies on access fetches", /credentials:\s*["']same-origin["']/],
 ];
 const forbidden = [
   ["blames a missing key after Clerk JS fails", "Clerk failed to load. Check CLERK_PUBLISHABLE_KEY."],
