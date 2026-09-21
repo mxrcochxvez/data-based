@@ -370,6 +370,7 @@ body.is-comments .hint { visibility: hidden; }
   inset: 0;
   z-index: 12;
   pointer-events: none;
+  overflow: visible;
 }
 .comment-pin {
   position: absolute;

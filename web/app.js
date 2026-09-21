@@ -1630,6 +1630,7 @@ if (typeof window.attachCamera === "function") {
     persist,
     world: $("world"),
     label: $("zoom-pct"),
+    home: $("recenter"),
     blocked: () => editDlg.open || document.body.classList.contains("is-modal") || document.body.classList.contains("is-page") || document.body.classList.contains("is-market"),
   });
 }

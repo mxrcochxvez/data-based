@@ -207,6 +207,7 @@
     addItem("Paste", "paste", { disabled: !clip, kbd: "⌘V" });
     addItem("Select all", "select-all", { kbd: "⌘A" });
     addItem("Reset zoom", "reset-zoom", { kbd: "0" });
+    addItem("Re-center", "recenter");
   }
 
   function fillCard(card) {
@@ -385,11 +386,17 @@
     const api = db();
     const card = api.state.cards.find((c) => String(c.id) === String(id));
     if (!card) return;
-    const scroller = api.scroller;
-    const z = root.Camera && typeof root.Camera.zoom === "function" ? root.Camera.zoom() : 1;
-    if (scroller) {
-      scroller.scrollLeft = (card.x + card.w / 2) * z - scroller.clientWidth / 2;
-      scroller.scrollTop = (card.y + card.h / 2) * z - scroller.clientHeight / 2;
+    const cx = card.x + card.w / 2;
+    const cy = card.y + card.h / 2;
+    if (root.Camera && typeof root.Camera.centerOn === "function") {
+      root.Camera.centerOn(cx, cy, true);
+    } else {
+      const scroller = api.scroller;
+      const z = root.Camera && typeof root.Camera.zoom === "function" ? root.Camera.zoom() : 1;
+      if (scroller) {
+        scroller.scrollLeft = cx * z - scroller.clientWidth / 2;
+        scroller.scrollTop = cy * z - scroller.clientHeight / 2;
+      }
     }
     api.setSelection([card.id]);
     const el = api.canvas && api.canvas.querySelector(`.card[data-id="${card.id}"]`);
@@ -433,6 +440,10 @@
     }
     if (act === "reset-zoom") {
       if (root.Camera && typeof root.Camera.zoomTo === "function") root.Camera.zoomTo(1);
+      return;
+    }
+    if (act === "recenter") {
+      if (root.Camera && typeof root.Camera.recenter === "function") root.Camera.recenter();
       return;
     }
     if (act === "export") {
