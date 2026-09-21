@@ -661,6 +661,38 @@
     if (sw) sw.setAttribute("aria-expanded", "false");
   }
 
+  function hostPop(pop) {
+    if (pop && pop.parentElement !== document.body) document.body.appendChild(pop);
+  }
+
+  function placePop(pop, anchor) {
+    if (!pop || !anchor) return;
+    hostPop(pop);
+    pop.hidden = false;
+    pop.style.position = "fixed";
+    pop.style.right = "auto";
+    pop.style.bottom = "auto";
+    pop.style.width = "auto";
+    pop.style.height = "auto";
+    pop.style.minHeight = "0";
+    const gap = 6;
+    const pad = 8;
+    const a = anchor.getBoundingClientRect();
+    const w = pop.offsetWidth || 240;
+    const h = pop.offsetHeight || 40;
+    let left = Math.round(a.right - w);
+    let top = Math.round(a.bottom + gap);
+    if (left < pad) left = pad;
+    if (left + w > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - pad - w);
+    if (top + h > window.innerHeight - pad) {
+      const above = a.top - gap - h;
+      top = above >= pad ? Math.round(above) : Math.max(pad, window.innerHeight - pad - h);
+    }
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    pop.style.maxWidth = Math.min(280, window.innerWidth - pad * 2) + "px";
+  }
+
   function fillBoardSwitch() {
     const menu = document.getElementById("board-switch-menu");
     const api = root.Boards;
@@ -705,8 +737,8 @@
       const open = moreMenu.hidden;
       closePops();
       if (open) {
-        moreMenu.hidden = false;
         more.setAttribute("aria-expanded", "true");
+        placePop(moreMenu, more);
       }
     });
     sw.addEventListener("click", (ev) => {
@@ -715,20 +747,21 @@
       closePops();
       if (open) {
         fillBoardSwitch();
-        swMenu.hidden = false;
         sw.setAttribute("aria-expanded", "true");
+        placePop(swMenu, sw);
       }
     });
     moreMenu.addEventListener("click", (ev) => {
       if (ev.target.closest("[role='menuitem']")) closePops();
     });
     document.addEventListener("pointerdown", (ev) => {
-      if (ev.target.closest("#chrome-brand")) return;
+      if (ev.target.closest("#chrome-more, #board-switch, #chrome-menu, #board-switch-menu")) return;
       closePops();
     });
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") closePops();
     });
+    window.addEventListener("resize", closePops);
   }
 
   if (document.readyState === "loading") {

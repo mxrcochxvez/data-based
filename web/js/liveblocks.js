@@ -384,11 +384,7 @@
     const store = (window.DB && window.DB.store) || (window.Boards && window.Boards.store);
     const go = () => {
       const bId = store && store.currentId;
-      const hash = String(location.hash || "#/").replace(/^#/, "") || "/";
-      const isBoard = hash === "/" || hash === "" || hash.startsWith("/#") || !hash.match(/^\/(?:boards|invite|people|admin|mcp)/);
-      if (bId && isBoard) {
-        enterBoard(bId);
-      }
+      if (bId) enterBoard(bId);
     };
 
     if (access && typeof access.ready === "function") {

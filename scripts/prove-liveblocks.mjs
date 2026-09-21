@@ -40,7 +40,6 @@ const must = [
   [selectJs, "select.js broadcasts card drag", /DataBasedLiveblocks\.broadcastDrag/],
   [selectJs, "select.js updates selection", /DataBasedLiveblocks\.updateSelection/],
   [boardsJs, "boards.js enters room on hydrateBoard", /DataBasedLiveblocks\.enterBoard/],
-  [boardsJs, "boards.js leaves room on screen change", /DataBasedLiveblocks\.leaveBoard/],
   [persistJs, "persist.js broadcasts sync kicks", /DataBasedLiveblocks\.broadcastSync/],
   [appJs, "app.js updates Liveblocks on setSelection", /DataBasedLiveblocks\.updateSelection/],
 ];

@@ -78,13 +78,7 @@
   function boardOpen() {
     const store = liveStore();
     if (!store || !store.currentId || !Array.isArray(store.boards) || !store.boards.length) return false;
-    const hash = String(location.hash || "#/").replace(/^#/, "") || "/";
-    if (hash.indexOf("/boards") === 0) return false;
-    if (hash.indexOf("/invite") === 0) return false;
-    if (hash.indexOf("/people") === 0) return false;
-    if (hash.indexOf("/mcp") === 0) return false;
-    const scroller = document.getElementById("scroller");
-    return Boolean(scroller);
+    return Boolean(document.getElementById("scroller"));
   }
 
   function typing() {

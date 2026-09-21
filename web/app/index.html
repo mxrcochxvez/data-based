@@ -61,12 +61,13 @@
       </button>
       <div class="chrome-pop" id="board-switch-menu" role="menu" aria-label="Boards" hidden></div>
       <div class="chrome-pop" id="chrome-menu" role="menu" aria-label="Workspace" hidden>
-        <a class="chrome-pop-item is-phone-share" href="#/invite" id="invite-link-phone" role="menuitem">Share board</a>
-        <a class="chrome-pop-item" href="#/invite" id="mcp-link" role="menuitem">MCP key</a>
-        <button type="button" class="chrome-pop-item" id="export-open" role="menuitem" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export agent prompt</button>
+        <span class="chrome-pop-who" id="who-label" hidden></span>
+        <a class="chrome-pop-item is-phone-share" href="#/invite" id="invite-link-phone" role="menuitem">Share</a>
         <a class="chrome-pop-item" href="#/people" id="people-link" role="menuitem" hidden>People</a>
         <div class="chrome-pop-rule" role="separator"></div>
-        <span class="who-chip" id="who-label" hidden></span>
+        <a class="chrome-pop-item" href="#/mcp" id="mcp-link" role="menuitem">MCP key</a>
+        <button type="button" class="chrome-pop-item" id="export-open" role="menuitem" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export agent prompt</button>
+        <div class="chrome-pop-rule" role="separator"></div>
         <button type="button" class="chrome-pop-item is-danger" id="sign-out" role="menuitem" hidden>Sign out</button>
       </div>
     </nav>
@@ -100,76 +101,106 @@
 
   <p class="hint" id="chrome-hint">H marketplace · drag empty to select · ⌘A all · + − zoom · 0 reset · ⌫ delete</p>
 
-  <section class="screen" id="screen-boards" hidden role="main" aria-labelledby="boards-title">
-    <div class="sheet">
-      <h1 id="boards-title">Boards</h1>
-      <p class="lead">Each board is its own canvas. Invite to this board is a grant list. App access is granted only by the system user.</p>
-      <form class="create" id="new-board">
-        <label class="sr-only" for="board-name-input">Board name</label>
-        <input type="text" id="board-name-input" name="name" placeholder="Board name" required autocomplete="off">
-        <button type="submit" class="btn">Create board</button>
-      </form>
-      <ul class="board-list" id="board-list"></ul>
-    </div>
-  </section>
-
-  <section class="screen" id="screen-invite" hidden role="main" aria-labelledby="invite-title">
-    <div class="sheet">
-      <a href="#/" class="back" id="invite-back">Back to board</a>
-      <h1 id="invite-title">Invite to this board</h1>
-      <p class="lead">Grant this board to an email. That does not grant product access. If they have no app access, they will see an error until the system user invites them into the product.</p>
-      <form class="create" id="grant-form">
-        <label class="sr-only" for="grant-handle">Email</label>
-        <input type="email" id="grant-handle" name="handle" placeholder="email" required autocomplete="off" aria-describedby="grant-err">
-        <button type="submit" class="btn">Invite to board</button>
-      </form>
-      <p class="parse-err" id="grant-err" hidden role="alert"></p>
-      <p class="sr-only" id="grant-live" aria-live="polite"></p>
-      <ul class="grant-list" id="grant-list"></ul>
-
-      <section class="mcp-panel" id="mcp-panel" aria-labelledby="mcp-title">
-        <h2 id="mcp-title">MCP key</h2>
-        <p class="lead" id="mcp-hint">Create a key to hook Cursor or Claude to this board via MCP.</p>
-        <label class="sr-only" for="mcp-secret">MCP key</label>
-        <input id="mcp-secret" class="mcp-secret" type="text" readonly hidden autocomplete="off" spellcheck="false">
-        <div class="mcp-actions">
-          <button type="button" class="btn" id="mcp-create">Create MCP key</button>
-          <button type="button" class="btn" id="mcp-copy" hidden>Copy</button>
-          <button type="button" class="btn ghost" id="mcp-reset" hidden>Reset key</button>
+  <dialog class="modal overlay-modal" id="screen-boards" aria-labelledby="boards-title">
+    <div class="modal-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="boards-title">Boards</h2>
+          <p class="lead">Each board is its own canvas. Invite to this board is a grant list. App access is granted only by the system user.</p>
         </div>
-        <div class="mcp-confirm" id="mcp-confirm" hidden>
-          <p>Reset this key? The old key stops working immediately. The new key is shown once. We do not email it.</p>
+        <button type="button" class="text-btn" data-close-overlay>Close</button>
+      </header>
+      <div class="modal-body">
+        <form class="create" id="new-board">
+          <label class="sr-only" for="board-name-input">Board name</label>
+          <input type="text" id="board-name-input" name="name" placeholder="Board name" required autocomplete="off">
+          <button type="submit" class="btn">Create board</button>
+        </form>
+        <ul class="board-list" id="board-list"></ul>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal overlay-modal" id="screen-invite" aria-labelledby="invite-title">
+    <div class="modal-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="invite-title">Invite to this board</h2>
+          <p class="lead">Grant this board to an email. That does not grant product access. If they have no app access, they will see an error until the system user invites them into the product.</p>
+        </div>
+        <button type="button" class="text-btn" id="invite-back" data-close-overlay>Close</button>
+      </header>
+      <div class="modal-body">
+        <form class="create" id="grant-form">
+          <label class="sr-only" for="grant-handle">Email</label>
+          <input type="email" id="grant-handle" name="handle" placeholder="email" required autocomplete="off" aria-describedby="grant-err">
+          <button type="submit" class="btn">Invite to board</button>
+        </form>
+        <p class="parse-err" id="grant-err" hidden role="alert"></p>
+        <p class="sr-only" id="grant-live" aria-live="polite"></p>
+        <ul class="grant-list" id="grant-list"></ul>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal overlay-modal" id="screen-mcp" aria-labelledby="mcp-title">
+    <div class="modal-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="mcp-title">MCP key</h2>
+          <p class="lead" id="mcp-hint">Create a key to hook Cursor or Claude to this board via MCP.</p>
+        </div>
+        <button type="button" class="text-btn" data-close-overlay>Close</button>
+      </header>
+      <div class="modal-body">
+        <section class="mcp-panel" id="mcp-panel">
+          <label class="sr-only" for="mcp-secret">MCP key</label>
+          <input id="mcp-secret" class="mcp-secret" type="text" readonly hidden autocomplete="off" spellcheck="false">
           <div class="mcp-actions">
-            <button type="button" class="btn ghost" id="mcp-reset-no">Cancel</button>
-            <button type="button" class="btn" id="mcp-reset-yes">Reset key</button>
+            <button type="button" class="btn" id="mcp-create">Create MCP key</button>
+            <button type="button" class="btn" id="mcp-copy" hidden>Copy</button>
+            <button type="button" class="btn ghost" id="mcp-reset" hidden>Reset key</button>
           </div>
-        </div>
-        <p class="sr-only" id="mcp-live" aria-live="polite"></p>
-      </section>
+          <div class="mcp-confirm" id="mcp-confirm" hidden>
+            <p>Reset this key? The old key stops working immediately. The new key is shown once. We do not email it.</p>
+            <div class="mcp-actions">
+              <button type="button" class="btn ghost" id="mcp-reset-no">Cancel</button>
+              <button type="button" class="btn" id="mcp-reset-yes">Reset key</button>
+            </div>
+          </div>
+          <p class="sr-only" id="mcp-live" aria-live="polite"></p>
+        </section>
+      </div>
     </div>
-  </section>
+  </dialog>
 
-  <section class="screen" id="screen-people" hidden role="main" aria-labelledby="people-title">
-    <div class="sheet">
-      <a href="#/" class="back">Back to board</a>
-      <h1 id="people-title">People</h1>
-      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Request access on the homepage stores an email on our waitlist. Board invites are email-only and do not create a Clerk account.</p>
-      <form class="create" id="app-invite-form">
-        <label class="sr-only" for="app-invite-email">Email</label>
-        <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
-        <button type="submit" class="btn">Invite to app</button>
-      </form>
-      <p class="parse-err" id="app-invite-err" hidden role="alert"></p>
-      <p class="sr-only" id="app-invite-live" aria-live="polite"></p>
-      <h2 class="people-h">Waitlist</h2>
-      <p class="lead">Emails from Request access. Invite grants app access and sends a Clerk invitation.</p>
-      <ul class="grant-list" id="waitlist-list"></ul>
-      <h2 class="people-h">All users</h2>
-      <ul class="grant-list" id="user-list"></ul>
-      <h2 class="people-h">Boards by user</h2>
-      <div id="boards-by-user"></div>
+  <dialog class="modal overlay-modal" id="screen-people" aria-labelledby="people-title">
+    <div class="modal-form">
+      <header class="modal-head">
+        <div>
+          <h2 id="people-title">People</h2>
+          <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Request access on the homepage stores an email on our waitlist. Board invites are email-only and do not create a Clerk account.</p>
+        </div>
+        <button type="button" class="text-btn" data-close-overlay>Close</button>
+      </header>
+      <div class="modal-body">
+        <form class="create" id="app-invite-form">
+          <label class="sr-only" for="app-invite-email">Email</label>
+          <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
+          <button type="submit" class="btn">Invite to app</button>
+        </form>
+        <p class="parse-err" id="app-invite-err" hidden role="alert"></p>
+        <p class="sr-only" id="app-invite-live" aria-live="polite"></p>
+        <h3 class="people-h">Waitlist</h3>
+        <p class="lead">Emails from Request access. Invite grants app access and sends a Clerk invitation.</p>
+        <ul class="grant-list" id="waitlist-list"></ul>
+        <h3 class="people-h">All users</h3>
+        <ul class="grant-list" id="user-list"></ul>
+        <h3 class="people-h">Boards by user</h3>
+        <div id="boards-by-user"></div>
+      </div>
     </div>
-  </section>
+  </dialog>
 
   <section class="screen gate-screen" id="screen-auth" hidden role="main" aria-labelledby="auth-title">
     <div class="sheet">

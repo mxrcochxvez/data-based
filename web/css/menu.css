@@ -2,12 +2,15 @@
 .chrome-pop {
   position: fixed;
   z-index: 90;
+  width: max-content;
   min-width: 196px;
   max-width: min(280px, calc(100vw - 16px));
+  height: auto;
+  min-height: 0;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--island);
   box-shadow: var(--shadow);
   color: var(--ink);
@@ -21,10 +24,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
   margin: 0;
-  padding: 7px 8px;
+  padding: 7px 10px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -149,20 +152,23 @@
   height: 16px;
   fill: currentColor;
 }
-  .chrome-pop .who-chip {
+.chrome-pop-who {
   display: block;
   max-width: none;
-  padding: 8px 10px 4px;
-  font-size: 11px;
-  color: var(--mute);
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-word;
 }
+.chrome-pop-who[hidden] { display: none !important; }
 .chrome-pop-item.is-phone-share { display: none; }
 
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 1023px) {
   .board-menu-item,
   .chrome-pop-item {
     min-height: 44px;
-    padding: 10px 10px;
+    padding: 8px 10px;
   }
   .chrome-board,
   .chrome-share,
@@ -176,7 +182,6 @@
 }
 
 @media (max-width: 1023px) {
-  #chrome-brand .wordmark-type { display: none; }
   #chrome-brand .wordmark {
     margin-right: 0;
     padding: 0 4px;
@@ -187,17 +192,19 @@
     margin-left: 4px;
     height: 44px;
   }
-  .chrome-board { max-width: min(18ch, 42vw); }
+  .chrome-board { max-width: min(16ch, 36vw); }
   .chrome-pop {
-    left: max(8px, env(safe-area-inset-left)) !important;
-    right: max(8px, env(safe-area-inset-right)) !important;
-    top: auto !important;
-    bottom: max(72px, calc(56px + env(safe-area-inset-bottom)));
-    width: auto;
-    max-width: none;
-    min-width: 0;
-    padding: 8px;
-    border-radius: 12px;
+    width: max-content;
+    max-width: min(280px, calc(100vw - 16px));
+    min-width: 220px;
+    height: auto;
+    min-height: 0;
+    padding: 6px;
   }
   .kbd { display: none; }
+}
+
+@media (max-width: 360px) {
+  .chrome-share { display: none; }
+  .chrome-pop-item.is-phone-share { display: flex; }
 }
