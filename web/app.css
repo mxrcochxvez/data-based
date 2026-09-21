@@ -923,12 +923,14 @@ textarea {
 .board-list, .grant-list { list-style: none; padding: 0; margin: 0; }
 .board-list li, .grant-list li {
   display: grid;
-  grid-template-columns: 1fr auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
+.grant-list li { grid-template-columns: 1fr auto auto; }
+.board-list li { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
+.board-list .text-btn.is-danger { color: var(--err); }
 .board-list a, .grant-list span { font-weight: 550; }
 .role { color: var(--mute); font-size: 12px; }
 
