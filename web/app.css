@@ -148,11 +148,22 @@ h1, h2, h3, p { margin: 0; }
   border: 0;
   background: transparent;
   border-radius: 7px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
-.tool svg { width: 18px; height: 18px; fill: var(--ink); }
-.tool:hover { background: #f0f0ec; }
-.tool.is-on { background: #111; }
-.tool.is-on svg { fill: #fff; }
+.tool svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.tool:hover { background: #f7f7f4; }
+.tool.is-on { background: #111111; color: #ffffff; }
+.tool.is-on svg { stroke: currentColor; fill: none; }
 .tool:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
 .tool.zoom-pct {
   height: auto;
@@ -1138,6 +1149,7 @@ body.is-gated .tools,
 body.is-gated .hint,
 body.is-gated .hud-empty,
 body.is-gated .brand,
+body.is-gated .comments-panel,
 body.is-gated .screen:not(.gate-screen) { visibility: hidden; }
 body.is-splash {
   -webkit-user-select: text;
