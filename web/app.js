@@ -1869,7 +1869,12 @@ document.addEventListener("click", (ev) => {
 
 editDlg.addEventListener("close", () => {
   closeCombos();
-  document.body.classList.remove("is-modal");
+  const overlay = ["screen-boards", "screen-invite", "screen-people", "screen-mcp"].some((id) => {
+    const el = $(id);
+    return el && el.open;
+  });
+  const exp = $("export");
+  if (!overlay && !(exp && exp.open)) document.body.classList.remove("is-modal");
 });
 
 function renderBoardChrome() {
@@ -1879,7 +1884,7 @@ function renderBoardChrome() {
   const phoneShare = $("invite-link-phone");
   if (phoneShare) phoneShare.href = "#/invite/" + b.id;
   const mcp = $("mcp-link");
-  if (mcp) mcp.href = "#/invite/" + b.id;
+  if (mcp) mcp.href = "#/mcp";
 }
 
 function renderBoardList() {
@@ -1908,12 +1913,33 @@ function renderGrants(id) {
 function showView(name, inviteId) {
   const boards = name === "boards";
   const invite = name === "invite";
-  $("screen-boards").hidden = !boards;
-  $("screen-invite").hidden = !invite;
-  document.body.classList.toggle("is-page", boards || invite);
-  if (scroller) scroller.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+  const people = name === "people";
+  const mcp = name === "mcp";
+  const nodes = {
+    "screen-boards": boards,
+    "screen-invite": invite,
+    "screen-people": people,
+    "screen-mcp": mcp,
+  };
+  Object.keys(nodes).forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    if (el.tagName === "DIALOG") {
+      if (nodes[id]) {
+        if (typeof el.showModal === "function") {
+          if (!el.open) el.showModal();
+        } else el.setAttribute("open", "");
+      } else if (el.open) el.close();
+    } else {
+      el.hidden = !nodes[id];
+    }
+  });
+  const overlay = boards || invite || people || mcp;
+  document.body.classList.toggle("is-page", false);
+  document.body.classList.toggle("is-modal", overlay || editDlg.open || Boolean($("export") && $("export").open));
+  if (scroller) scroller.removeAttribute("aria-hidden");
   const tools = $("chrome-tools");
-  if (tools) tools.setAttribute("aria-hidden", boards || invite ? "true" : "false");
+  if (tools) tools.removeAttribute("aria-hidden");
   showEmpty();
   if (boards) renderBoardList();
   if (invite) renderGrants(inviteId || currentBoard().id);
@@ -1923,6 +1949,14 @@ function route() {
   const h = (location.hash || "#/").slice(1);
   if (h === "/boards") {
     showView("boards");
+    return;
+  }
+  if (h === "/people" || h === "/admin" || h === "/users") {
+    showView("people");
+    return;
+  }
+  if (h === "/mcp") {
+    showView("mcp");
     return;
   }
   const inv = h.match(/^\/invite(?:\/([^/]+))?$/);

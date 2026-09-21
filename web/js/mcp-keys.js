@@ -154,7 +154,7 @@
 
     load();
     window.addEventListener("hashchange", () => {
-      if (/^#\/invite/.test(location.hash || "")) load();
+      if (/^#\/(?:mcp|invite)/.test(location.hash || "")) load();
     });
   }
 

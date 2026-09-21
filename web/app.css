@@ -476,6 +476,30 @@ body.is-market .tip,
 }
 body.is-modal { overflow: hidden; }
 
+.overlay-modal { width: min(560px, calc(100vw - 24px)); }
+.overlay-modal .modal-form { max-height: min(80dvh, 720px); }
+.overlay-modal .modal-head {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.overlay-modal .modal-body {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  gap: 12px;
+}
+.overlay-modal .lead {
+  margin-bottom: 0;
+  max-width: none;
+}
+.overlay-modal .mcp-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.overlay-modal .people-h { margin: 8px 0 4px; }
+.overlay-modal .create { margin-bottom: 0; }
+
 .export-modal { width: min(840px, calc(100vw - 24px)); }
 .export-modal .modal-body {
   display: flex;
@@ -1195,7 +1219,10 @@ body.is-splash {
 .presence-bar {
   display: inline-flex;
   align-items: center;
-  margin-right: 6px;
+  flex: none;
+  max-width: 72px;
+  margin-right: 4px;
+  overflow: hidden;
 }
 
 .presence-avatar {

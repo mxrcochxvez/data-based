@@ -272,9 +272,13 @@
         hideMarquee();
       }
       if (session.kind === "move" || session.kind === "resize") {
-        persist({ flush: true });
+        const saved = persist({ flush: true });
         if (root.DataBasedSync && typeof root.DataBasedSync.noteLocal === "function") {
-          try { root.DataBasedSync.noteLocal(); } catch (_) {}
+          try {
+            root.DataBasedSync.noteLocal(
+              saved || (root.DB && root.DB.store) || (root.Boards && root.Boards.store)
+            );
+          } catch (_) {}
         }
         if (root.DataBasedLiveblocks && typeof root.DataBasedLiveblocks.broadcastSync === "function") {
           root.DataBasedLiveblocks.broadcastSync();

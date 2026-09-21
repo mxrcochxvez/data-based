@@ -158,7 +158,7 @@
     const phoneShare = $("invite-link-phone");
     if (phoneShare) phoneShare.href = "#/invite/" + b.id;
     const mcp = $("mcp-link");
-    if (mcp) mcp.href = "#/invite/" + b.id;
+    if (mcp) mcp.href = "#/mcp";
   }
 
   function renderBoardList() {
@@ -252,28 +252,58 @@
     });
   }
 
+  const OVERLAYS = ["screen-boards", "screen-invite", "screen-people", "screen-mcp"];
+  let routing = false;
+
+  function otherModalsOpen() {
+    const edit = $("edit");
+    const exp = $("export");
+    return Boolean((edit && edit.open) || (exp && exp.open));
+  }
+
+  function overlayHash(h) {
+    return h === "/boards" || h === "/people" || h === "/admin" || h === "/users" || h === "/mcp" || /^\/invite/.test(h);
+  }
+
+  function setDialog(el, on) {
+    if (!el) return;
+    if (el.tagName === "DIALOG") {
+      if (on) {
+        if (typeof el.showModal === "function") {
+          if (!el.open) el.showModal();
+        } else el.setAttribute("open", "");
+      } else if (el.open) {
+        el.close();
+      } else {
+        el.removeAttribute("open");
+      }
+      return;
+    }
+    el.hidden = !on;
+  }
+
   function showView(name, inviteId) {
+    routing = true;
     const boards = name === "boards";
     const invite = name === "invite";
     const people = name === "people";
-    const boardsEl = $("screen-boards");
-    const inviteEl = $("screen-invite");
-    const peopleEl = $("screen-people");
-    if (boardsEl) boardsEl.hidden = !boards;
-    if (inviteEl) inviteEl.hidden = !invite;
-    if (peopleEl) peopleEl.hidden = !people;
-    document.body.classList.toggle("is-page", boards || invite || people);
+    const mcp = name === "mcp";
+    setDialog($("screen-boards"), boards);
+    setDialog($("screen-invite"), invite);
+    setDialog($("screen-people"), people);
+    setDialog($("screen-mcp"), mcp);
+    const overlay = boards || invite || people || mcp;
+    document.body.classList.toggle("is-page", false);
+    document.body.classList.toggle("is-modal", overlay || otherModalsOpen());
     const scroller = $("scroller");
-    if (scroller) scroller.setAttribute("aria-hidden", boards || invite || people ? "true" : "false");
+    if (scroller) scroller.removeAttribute("aria-hidden");
     const tools = $("chrome-tools");
-    if (tools) tools.setAttribute("aria-hidden", boards || invite || people ? "true" : "false");
+    if (tools) tools.removeAttribute("aria-hidden");
     if (api && api.showEmpty) api.showEmpty();
     if (boards) renderBoardList();
     if (invite) renderGrants(inviteId || currentBoard().id);
     if (people) renderPeople();
-    if ((boards || invite || people) && global.DataBasedLiveblocks && typeof global.DataBasedLiveblocks.leaveBoard === "function") {
-      global.DataBasedLiveblocks.leaveBoard();
-    }
+    routing = false;
   }
 
   function openBoard(b) {
@@ -298,6 +328,10 @@
         return;
       }
       showView("people");
+      return;
+    }
+    if (h === "/mcp") {
+      showView("mcp");
       return;
     }
     const inv = h.match(/^\/invite(?:\/([^/]+))?$/);
@@ -459,6 +493,26 @@
     }
 
     window.addEventListener("hashchange", route);
+    OVERLAYS.forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("close", () => {
+        if (routing) return;
+        const h = (location.hash || "#/").slice(1);
+        if (overlayHash(h)) location.hash = "#/";
+        if (!otherModalsOpen()) document.body.classList.remove("is-modal");
+      });
+      el.addEventListener("click", (ev) => {
+        if (ev.target !== el) return;
+        location.hash = "#/";
+      });
+    });
+    document.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-close-overlay]");
+      if (!btn) return;
+      ev.preventDefault();
+      location.hash = "#/";
+    });
     window.addEventListener("pagehide", saveNow);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) saveNow();

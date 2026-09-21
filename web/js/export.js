@@ -515,7 +515,12 @@
     }
 
     dlg.addEventListener("close", () => {
-      if (!$("edit") || !$("edit").open) document.body.classList.remove("is-modal");
+      const overlay = ["screen-boards", "screen-invite", "screen-people", "screen-mcp"].some((id) => {
+        const el = $(id);
+        return el && el.open;
+      });
+      const edit = $("edit");
+      if ((!edit || !edit.open) && !overlay) document.body.classList.remove("is-modal");
       if (openBtn) openBtn.setAttribute("aria-expanded", "false");
       if (copyBtn) copyBtn.textContent = "Copy";
       if (live) live.textContent = "";
