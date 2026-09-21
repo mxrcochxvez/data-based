@@ -32,16 +32,54 @@
     return window.location.origin + SPLASH_PATH;
   }
 
+  function clerkAppLoadOpts() {
+    const app = appUrl();
+    return {
+      isSatellite: false,
+      signInUrl: app,
+      signUpUrl: app,
+      afterSignInUrl: app,
+      afterSignUpUrl: app,
+      signInForceRedirectUrl: app,
+      signUpForceRedirectUrl: app,
+      signInFallbackRedirectUrl: app,
+      signUpFallbackRedirectUrl: app,
+    };
+  }
+
+  function isClerkAccountPortal(href) {
+    try {
+      const host = new URL(String(href || ""), window.location.origin).hostname;
+      return /(^|\.)accounts\.dev$/i.test(host) || /(^|\.)clerk\.com$/i.test(host);
+    } catch (_) {
+      return false;
+    }
+  }
+
   function goApp() {
     if (onAppPage()) return false;
     location.replace(window.location.origin + "/" + (location.search || "") + (location.hash || ""));
     return true;
   }
 
+  function clerkTransferPending() {
+    try {
+      const client = global.Clerk && global.Clerk.client;
+      if (!client) return false;
+      return Boolean(
+        (client.signUp && client.signUp.isTransferable)
+        || (client.signIn && client.signIn.isTransferable)
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
   function goSplash() {
     if (onSplashPage()) return false;
     if (clerkSessionPresent()) return false;
     if (oauthBounce()) return false;
+    if (clerkTransferPending()) return false;
     if (clerkStatus !== "ready") return false;
     location.replace(splashUrl());
     return true;
@@ -223,7 +261,7 @@
     if (onAppPage() && clerkSessionPresent()) {
       return;
     }
-    if (onAppPage() && !oauthBounce() && !msg) {
+    if (onAppPage() && !oauthBounce() && !clerkTransferPending() && !msg) {
       goSplash();
       return;
     }
@@ -418,7 +456,6 @@
       s.crossOrigin = "anonymous";
       s.fetchPriority = "high";
       s.dataset.clerkJs = "1";
-      if (pk && clerkFapi) s.setAttribute("data-clerk-publishable-key", pk);
       watch(s);
       document.head.appendChild(s);
     });
@@ -462,36 +499,32 @@
     global.__clerk_frontend_api = fapi;
     clerkBootPromise = loadClerkScript(key).then(function () {
       const loaded = global.Clerk;
-      const Ctor = typeof loaded === "function"
-        ? loaded
-        : (loaded && loaded.constructor && loaded.constructor !== Object ? loaded.constructor : null);
+      const loadOpts = clerkAppLoadOpts();
       // Clerk JS 5.128 reads FAPI from the publishable key. frontendApi is passed for
       // newer constructors; domain/proxyUrl are satellite/proxy and must not be vercel.app.
       const opts = { frontendApi: fapi };
-      if (typeof Ctor === "function" && Ctor !== loaded) {
-        const inst = new Ctor(key, opts);
-        return inst.load({ isSatellite: false }).then(function () {
-          global.Clerk = inst;
-          clerkStatus = "ready";
-          return inst;
-        });
-      }
-      if (typeof loaded === "function") {
-        const inst = new loaded(key, opts);
-        return inst.load({ isSatellite: false }).then(function () {
-          global.Clerk = inst;
-          clerkStatus = "ready";
-          return inst;
-        });
-      }
-      if (loaded && clerkInstanceFapi(loaded) === fapi && loaded.client) {
-        clerkStatus = "ready";
-        return loaded;
-      }
-      if (loaded && typeof loaded.load === "function" && clerkInstanceFapi(loaded) === fapi) {
-        return loaded.load({ publishableKey: key, isSatellite: false }).then(function () {
+      if (loaded && typeof loaded !== "function") {
+        const host = clerkInstanceFapi(loaded);
+        if (loaded.client && (!host || host === fapi)) {
           clerkStatus = "ready";
           return loaded;
+        }
+        if (typeof loaded.load === "function" && (!host || host === fapi)) {
+          return loaded.load(Object.assign({ publishableKey: key }, loadOpts)).then(function () {
+            clerkStatus = "ready";
+            return loaded;
+          });
+        }
+      }
+      const Ctor = typeof loaded === "function"
+        ? loaded
+        : (loaded && loaded.constructor && loaded.constructor !== Object ? loaded.constructor : null);
+      if (typeof Ctor === "function") {
+        const inst = new Ctor(key, opts);
+        return inst.load(loadOpts).then(function () {
+          global.Clerk = inst;
+          clerkStatus = "ready";
+          return inst;
         });
       }
       throw new Error("Clerk JS did not initialize");
@@ -546,9 +579,12 @@
     return /external_account_not_found|The External Account was not found/i.test(blob);
   }
 
+  function signUpNeedsTransfer(clerk) {
+    const signUp = clerk && clerk.client && clerk.client.signUp;
+    return Boolean(signUp && signUp.isTransferable);
+  }
+
   function isExistingExternalAccount(err) {
-    const signUp = global.Clerk && global.Clerk.client && global.Clerk.client.signUp;
-    if (signUp && signUp.isTransferable) return true;
     const blob = clerkErrorText(err) + " " + String(location.href) + " " + JSON.stringify(bouncePayload() || {});
     return /external_account_exists|This external account already exists/i.test(blob);
   }
@@ -575,24 +611,18 @@
   function startGoogleOAuth(clerk, preferSignUp) {
     const args = oauthRedirectArgs();
     const client = clerk && clerk.client;
-    const signUp = client && client.signUp;
+    if (preferSignUp) {
+      const signUp = client && client.signUp;
+      if (signUp && typeof signUp.authenticateWithRedirect === "function") {
+        return signUp.authenticateWithRedirect(args);
+      }
+      return Promise.reject(new Error("Google sign-up is not ready"));
+    }
     const signIn = client && client.signIn;
-    if (preferSignUp && signUp && typeof signUp.authenticateWithRedirect === "function") {
-      return signUp.authenticateWithRedirect(args);
-    }
-    if (!preferSignUp && signIn && typeof signIn.authenticateWithRedirect === "function") {
-      return signIn.authenticateWithRedirect(args);
-    }
-    if (signUp && typeof signUp.authenticateWithRedirect === "function") {
-      return signUp.authenticateWithRedirect(args);
-    }
     if (signIn && typeof signIn.authenticateWithRedirect === "function") {
       return signIn.authenticateWithRedirect(args);
     }
-    if (clerk && typeof clerk.authenticateWithRedirect === "function") {
-      return clerk.authenticateWithRedirect(args);
-    }
-    return Promise.reject(new Error("Google OAuth is not ready"));
+    return Promise.reject(new Error("Google sign-in is not ready"));
   }
 
   function stayOnApp(clerk) {
@@ -618,86 +648,69 @@
   }
 
   function transferToSignIn(clerk) {
+    if (!signUpNeedsTransfer(clerk)) return Promise.resolve(clerk);
     const existing = existingSessionId(clerk);
     if (existing) return activateCreated(clerk, existing);
     const signIn = clerk && clerk.client && clerk.client.signIn;
-    if (signIn && typeof signIn.create === "function") {
-      return signIn.create({ transfer: true }).then(function (si) {
-        const live = si || signIn;
-        if (live && live.status === "complete" && live.createdSessionId) {
-          return activateCreated(clerk, live.createdSessionId);
-        }
-        const exist = live && live.existingSession && live.existingSession.sessionId;
-        if (exist) return activateCreated(clerk, exist);
-        if (typeof signIn.authenticateWithRedirect === "function") {
-          return signIn.authenticateWithRedirect(oauthRedirectArgs()).then(function () { return clerk; });
-        }
-        return clerk;
-      });
-    }
-    return startGoogleOAuth(clerk, false).then(function () { return clerk; });
-  }
-
-  function transferOrSignUp(clerk) {
-    const signUp = clerk && clerk.client && clerk.client.signUp;
-    if (signUp && typeof signUp.create === "function") {
-      return signUp.create({ transfer: true }).then(function (su) {
-        if (su && su.status === "complete" && su.createdSessionId && typeof clerk.setActive === "function") {
-          return clerk.setActive({ session: su.createdSessionId, redirectUrl: appUrl() }).then(function () { return stayOnApp(clerk); });
-        }
-        const run = su && typeof su.authenticateWithRedirect === "function"
-          ? su.authenticateWithRedirect.bind(su)
-          : (typeof signUp.authenticateWithRedirect === "function" ? signUp.authenticateWithRedirect.bind(signUp) : null);
-        if (run) return run(oauthRedirectArgs()).then(function () { return clerk; });
-        throw new Error("external_account_not_found");
-      });
-    }
-    return startGoogleOAuth(clerk, true).then(function () { return clerk; });
-  }
-
-  function maybeTransferOAuth(clerk) {
-    if (clerkSessionPresent()) return Promise.resolve(stayOnApp(clerk));
-    if (isAlreadySignedIn() || isExistingExternalAccount()) {
-      return transferToSignIn(clerk);
-    }
-    const signIn = clerk && clerk.client && clerk.client.signIn;
-    if ((signIn && signIn.isTransferable) || isMissingExternalAccount()) {
-      return transferOrSignUp(clerk);
-    }
-    return Promise.resolve(clerk);
+    if (!signIn || typeof signIn.create !== "function") return Promise.resolve(clerk);
+    return signIn.create({ transfer: true }).then(function (si) {
+      const live = si || signIn;
+      if (live && live.status === "complete" && live.createdSessionId) {
+        return activateCreated(clerk, live.createdSessionId);
+      }
+      const exist = live && live.existingSession && live.existingSession.sessionId;
+      if (exist) return activateCreated(clerk, exist);
+      return clerk;
+    });
   }
 
   function finishOAuthBounce(clerk) {
-    if (!oauthBounce() || typeof clerk.handleRedirectCallback !== "function") {
-      return maybeTransferOAuth(clerk);
+    if (!oauthBounce()) {
+      return activateSession(clerk).then(function (live) { return stayOnApp(live); });
+    }
+    if (typeof clerk.handleRedirectCallback !== "function") {
+      return activateSession(clerk).then(function (live) { return stayOnApp(live); });
     }
     const app = appUrl();
     return clerk.handleRedirectCallback({
       transferable: true,
+      signInUrl: app,
+      signUpUrl: app,
       signInForceRedirectUrl: app,
       signUpForceRedirectUrl: app,
       afterSignInUrl: app,
       afterSignUpUrl: app,
       redirectUrl: app,
-      navigate: function () {
+      navigate: function (to) {
+        if (isClerkAccountPortal(to)) return Promise.resolve();
         stayOnApp(clerk);
         return Promise.resolve();
       },
     }).then(function () {
-      return maybeTransferOAuth(clerk);
+      return activateSession(clerk).then(function (live) {
+        if (clerkSessionPresent()) return stayOnApp(live);
+        if (signUpNeedsTransfer(live)) return transferToSignIn(live);
+        if (isMissingExternalAccount()) {
+          return startGoogleOAuth(live, true).then(function () { return live; });
+        }
+        return live;
+      });
     }).catch(function (err) {
       if (isRestrictedSignUp(err)) {
         clerkFail = restrictedMessage();
         return clerk;
       }
-      if (isAlreadySignedIn(err) || isExistingExternalAccount(err)) {
+      if (isAlreadySignedIn(err)) {
+        return activateSession(clerk).then(function (live) { return stayOnApp(live); });
+      }
+      if (isExistingExternalAccount(err) && signUpNeedsTransfer(clerk)) {
         return transferToSignIn(clerk).catch(function (signInErr) {
           clerkFail = clerkErrorText(signInErr) || clerkErrorText(err) || "Clerk did not finish Google sign-in.";
           return clerk;
         });
       }
       if (isMissingExternalAccount(err)) {
-        return transferOrSignUp(clerk).catch(function (signUpErr) {
+        return startGoogleOAuth(clerk, true).then(function () { return clerk; }).catch(function (signUpErr) {
           clerkFail = isRestrictedSignUp(signUpErr) ? restrictedMessage() : (clerkErrorText(signUpErr) || restrictedMessage());
           return clerk;
         });
@@ -708,14 +721,8 @@
   }
 
   function canRedirect(clerk) {
-    const client = clerk && clerk.client;
-    return Boolean(
-      (client && (
-        (client.signUp && typeof client.signUp.authenticateWithRedirect === "function")
-        || (client.signIn && typeof client.signIn.authenticateWithRedirect === "function")
-      ))
-      || (clerk && typeof clerk.authenticateWithRedirect === "function")
-    );
+    const signIn = clerk && clerk.client && clerk.client.signIn;
+    return Boolean(signIn && typeof signIn.authenticateWithRedirect === "function");
   }
 
   function googleLabel() {
@@ -778,32 +785,27 @@
       }
       return;
     }
-    return startGoogleOAuth(clerk, true).catch(function (err) {
-      resetGoogleButton();
-      if (isRestrictedSignUp(err)) {
-        const box = $("who-err");
-        if (box) {
-          box.hidden = false;
-          box.textContent = restrictedMessage();
-        }
-        return;
-      }
-      if (isAlreadySignedIn(err) || isExistingExternalAccount(err)) {
-        return transferToSignIn(clerk);
-      }
+    return startGoogleOAuth(clerk, false).catch(function (err) {
       if (isMissingExternalAccount(err)) {
-        return startGoogleOAuth(clerk, true);
+        return startGoogleOAuth(clerk, true).catch(function (signUpErr) {
+          resetGoogleButton();
+          const box = $("who-err");
+          if (box) {
+            box.hidden = false;
+            box.textContent = isRestrictedSignUp(signUpErr)
+              ? restrictedMessage()
+              : (clerkErrorText(signUpErr) || clerkErrorText(err) || "Google sign-in failed. Enable Google on the Clerk instance, or invite this email in Development.");
+          }
+        });
       }
-      return startGoogleOAuth(clerk, false).catch(function (second) {
-        resetGoogleButton();
-        const box = $("who-err");
-        if (box) {
-          box.hidden = false;
-          box.textContent = isRestrictedSignUp(second)
-            ? restrictedMessage()
-            : (clerkErrorText(second) || clerkErrorText(err) || "Google sign-in failed. Enable Google on the Clerk instance, or invite this email in Development.");
-        }
-      });
+      resetGoogleButton();
+      const box = $("who-err");
+      if (box) {
+        box.hidden = false;
+        box.textContent = isRestrictedSignUp(err)
+          ? restrictedMessage()
+          : (clerkErrorText(err) || "Google sign-in failed. Enable Google on the Clerk instance, or invite this email in Development.");
+      }
     });
     });
   }
@@ -849,7 +851,7 @@
     const clientEmail = handle();
     const clerkUser = global.Clerk && global.Clerk.user;
     if (!clerkSessionPresent()) {
-      if (onAppPage() && clerkStatus === "ready" && !oauthBounce()) {
+      if (onAppPage() && clerkStatus === "ready" && !oauthBounce() && !clerkTransferPending()) {
         goSplash();
         finish(false);
         return false;
@@ -943,7 +945,7 @@
                   showWho(restrictedMessage() + " If Invitations already include this email, Google sign-up should create the user on " + clerkWhere() + ".");
                 } else if (bouncedGoogle) {
                   showWho("Google returned here, but Clerk did not create a session. Look at " + clerkWhere() + " → Users and Invitations — not a different application, and not Production if this site uses pk_test_ (Development). Enable Google, add this origin, and if Restricted, invite the Google email first.");
-                } else if (onAppPage() && clerkStatus === "ready" && !oauthBounce() && !clerkSessionPresent()) {
+                } else if (onAppPage() && clerkStatus === "ready" && !oauthBounce() && !clerkTransferPending() && !clerkSessionPresent()) {
                   goSplash();
                 } else {
                   showWho();

@@ -200,7 +200,10 @@ function ClerkBounce(key, opts) {
 }
 ClerkBounce.prototype.load = async function () { return this; };
 ClerkBounce.prototype.addListener = function () {};
-ClerkBounce.prototype.handleRedirectCallback = async function () {
+ClerkBounce.prototype.handleRedirectCallback = async function (opts) {
+  if (opts && typeof opts.navigate === "function") {
+    await opts.navigate("https://loyal-lionfish-3872.accounts.dev/sign-in");
+  }
   const err = new Error("This external account already exists.");
   err.errors = [{ code: "external_account_exists", message: "This external account already exists." }];
   throw err;
@@ -267,5 +270,163 @@ assert.equal(
   false,
   "existing Google user must not bounce to /splash"
 );
+assert.equal(
+  bounceReplaced.some((url) => url.includes("accounts.dev")),
+  false,
+  "OAuth callback must not send the browser to Clerk Account Portal"
+);
+assert.equal(
+  new URL(bounceLocation.href).hostname,
+  "data-based-app.vercel.app",
+  "OAuth callback must stay on the app origin"
+);
+
+let signInStarted = false;
+let signUpStarted = false;
+const clickEls = {
+  "google-signin": {
+    disabled: false,
+    textContent: "Sign in with Google",
+    listeners: [],
+    addEventListener(_type, fn) {
+      this.listeners.push(fn);
+    },
+  },
+  "google-signin-label": { textContent: "Sign in with Google" },
+  "who-err": { hidden: true, textContent: "" },
+  "waitlist-form": { addEventListener() {} },
+};
+const idleLocation = {
+  href: "https://data-based-app.vercel.app/splash",
+  pathname: "/splash",
+  origin: "https://data-based-app.vercel.app",
+  hash: "",
+  search: "",
+  replace() {},
+};
+function ClerkIdle() {
+  this.frontendApi = "loyal-lionfish-3872.clerk.accounts.dev";
+  this.user = null;
+  this.session = null;
+  this.client = {
+    sessions: [],
+    lastActiveSessionId: null,
+    signIn: {
+      authenticateWithRedirect: async () => {
+        signInStarted = true;
+      },
+    },
+    signUp: {
+      authenticateWithRedirect: async () => {
+        signUpStarted = true;
+      },
+    },
+  };
+}
+ClerkIdle.prototype.load = async function () { return this; };
+ClerkIdle.prototype.addListener = function () {};
+ClerkIdle.prototype.setActive = async function () { return this; };
+const idleDoc = {
+  body: { classList: { toggle() {} } },
+  head: { appendChild() {} },
+  getElementById(id) {
+    return clickEls[id] || null;
+  },
+  querySelector() {
+    return null;
+  },
+  createElement() {
+    return { setAttribute() {}, addEventListener() {}, style: {} };
+  },
+};
+const idleSandbox = {
+  window: null,
+  document: idleDoc,
+  location: idleLocation,
+  fetch: fetchFn,
+  Promise,
+  Boolean,
+  String,
+  Array,
+  JSON,
+  URL,
+  Error,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  atob: (s) => Buffer.from(s, "base64").toString("binary"),
+  btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+  console,
+};
+idleSandbox.window = idleSandbox;
+idleSandbox.global = idleSandbox;
+idleSandbox.Clerk = ClerkIdle;
+idleSandbox.__clerk_frontend_api = "loyal-lionfish-3872.clerk.accounts.dev";
+idleSandbox.__databasedClerkPreload = fetchFn("/api/config").then((res) => res.json());
+vm.runInNewContext(accessSrc, idleSandbox, { filename: "access.js" });
+await idleSandbox.DataBasedAccess.ready();
+for (const fn of clickEls["google-signin"].listeners) fn();
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(signInStarted, true, "Sign in with Google must start Clerk sign_in");
+assert.equal(signUpStarted, false, "returning Google click must not start Clerk sign_up");
+
+const loadSplash = [];
+const loadLoc = {
+  href: "https://data-based-app.vercel.app/",
+  pathname: "/",
+  origin: "https://data-based-app.vercel.app",
+  hash: "",
+  search: "",
+  replace(url) {
+    loadSplash.push(String(url));
+    this.href = String(url);
+  },
+};
+function ClerkLoading() {
+  this.frontendApi = "loyal-lionfish-3872.clerk.accounts.dev";
+  this.user = null;
+  this.session = null;
+  this.client = { sessions: [], lastActiveSessionId: null, signIn: {}, signUp: {} };
+}
+ClerkLoading.prototype.load = function () {
+  return new Promise(function () {});
+};
+ClerkLoading.prototype.addListener = function () {};
+const loadSandbox = {
+  window: null,
+  document,
+  location: loadLoc,
+  fetch: fetchFn,
+  Promise,
+  Boolean,
+  String,
+  Array,
+  JSON,
+  URL,
+  Error,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  atob: (s) => Buffer.from(s, "base64").toString("binary"),
+  btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+  console,
+};
+loadSandbox.window = loadSandbox;
+loadSandbox.global = loadSandbox;
+loadSandbox.Clerk = ClerkLoading;
+loadSandbox.__clerk_frontend_api = "loyal-lionfish-3872.clerk.accounts.dev";
+loadSandbox.__databasedClerkPreload = fetchFn("/api/config").then((res) => res.json());
+vm.runInNewContext(accessSrc, loadSandbox, { filename: "access.js" });
+await new Promise((resolve) => setTimeout(resolve, 50));
+assert.equal(
+  loadSplash.some((url) => url.includes("/splash")),
+  false,
+  "logged-out / must not replace to /splash before Clerk.load finishes"
+);
+
 console.log("pass mocked Clerk user on /splash runs goApp to /");
 console.log("pass external_account_exists transfers to sign-in and stays on /");
+console.log("pass Google click starts sign_in");
+console.log("pass / waits for Clerk.load before splash redirect");

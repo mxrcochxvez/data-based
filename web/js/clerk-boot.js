@@ -90,7 +90,8 @@
     s.async = true;
     s.crossOrigin = "anonymous";
     s.dataset.clerkJs = "1";
-    if (frontendApi && key) s.setAttribute("data-clerk-publishable-key", key);
+    // Preload only. Do not auto-instantiate Clerk here: that uses Account Portal
+    // sign-in URLs and hijacks Google return onto *.accounts.dev/sign-in.
     s.fetchPriority = "high";
     s.onerror = function () {
       if (s.src === FALLBACK_JS) return;

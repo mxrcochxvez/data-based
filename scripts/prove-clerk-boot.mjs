@@ -8,9 +8,11 @@ const boot = fs.readFileSync(path.join(root, "web/js/clerk-boot.js"), "utf8");
 const splash = fs.readFileSync(path.join(root, "web/splash.html"), "utf8");
 
 const must = [
-  ["sets data-clerk-publishable-key on the Clerk script before it runs", /setAttribute\(\s*["']data-clerk-publishable-key["']/],
   ["sets window.__clerk_publishable_key before loading Clerk JS", /__clerk_publishable_key/],
-  ["starts first Google with client.signUp.authenticateWithRedirect", /signUp\.authenticateWithRedirect/],
+  ["starts first Google with sign-in, not sign-up", /function signInGoogle\(\) \{[\s\S]*?startGoogleOAuth\(clerk, false\)/],
+  ["pins Clerk load sign-in URL to the app origin", /function clerkAppLoadOpts\(/],
+  ["blocks Account Portal host navigation", /function isClerkAccountPortal\(/],
+  ["handleRedirectCallback sets signInUrl to the app", /handleRedirectCallback\(\s*\{[\s\S]*?signInUrl:\s*app/],
   ["shows Opening Google while Clerk JS finishes", /Opening Google/],
   ["recovers external_account_not_found by transferring to sign-up", /external_account_not_found/],
   ["transfers existing Google users with signIn.create({ transfer: true })", /signIn\.create\(\s*\{\s*transfer:\s*true/],
@@ -18,7 +20,8 @@ const must = [
   ["treats identifier_already_signed_in as an existing session", /identifier_already_signed_in/],
   ["passes transferable on handleRedirectCallback", /handleRedirectCallback\(\s*\{\s*transferable:\s*true/],
   ["explains Clerk Restricted invitations in Development", /Clerk Restricted will not create a user/],
-  ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
+  ["keeps sign-up OAuth as the missing-account fallback", /startGoogleOAuth\(clerk, true\)/],
+  ["uses signIn.authenticateWithRedirect", /signIn\.authenticateWithRedirect/],
   ["loads Clerk JS from Clerk-hosted frontend API or jsDelivr", /clerkOwnsNpm/],
   ["falls back to jsDelivr when the Frontend API is not Clerk-hosted", /cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@5/],
   ["constructs Clerk with frontendApi so FAPI is not vercel.app", /new (?:loaded|Ctor)\(\s*key,\s*opts\s*\)/],
@@ -37,6 +40,7 @@ const forbidden = [
   ["starts Google with sign-in only", "function googleRedirect(clerk)"],
   ["blocks the Google click on Clerk still loading", "Clerk is still starting. Try again in a moment."],
   ["opens Google in a popup", "authenticateWithPopup"],
+  ["auto-starts Clerk via data-clerk-publishable-key", "data-clerk-publishable-key"],
 ];
 
 let failed = 0;
@@ -80,8 +84,9 @@ if (!restrictedOk) failed += 1;
 const bootOk = /clerkOwnsNpm/.test(boot)
   && boot.includes("cdn.jsdelivr.net/npm/@clerk/clerk-js@5")
   && /rewritePublishableKey/.test(boot)
-  && /cfg\.frontendApi/.test(boot);
-console.log(bootOk ? "pass" : "fail", "clerk-boot skips satellite vercel.app npm hosts and rewrites FAPI");
+  && /cfg\.frontendApi/.test(boot)
+  && !boot.includes("data-clerk-publishable-key");
+console.log(bootOk ? "pass" : "fail", "clerk-boot preloads Clerk JS without auto-start or satellite vercel.app npm");
 if (!bootOk) failed += 1;
 const splashOk = !splash.includes("clerk.shared.lcl.dev");
 console.log(splashOk ? "pass" : "fail", "splash does not preconnect clerk.shared.lcl.dev");
