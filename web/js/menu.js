@@ -201,6 +201,7 @@
   function fillCanvas() {
     addItem("Add note", "add-note");
     addItem("Add table", "add-table");
+    addItem("Add comment", "add-comment");
     addItem("Open marketplace", "market");
     addRule();
     addItem("Paste", "paste", { disabled: !clip, kbd: "⌘V" });
@@ -214,6 +215,7 @@
       ? f.cardLinkCount(card.id)
       : ((card.links && card.links.length) || 0);
     addItem("Edit", "edit", { kbd: "E" });
+    addItem("Add comment", "add-comment");
     addItem("Duplicate", "duplicate");
     if (links) addItem("Disconnect links", "disconnect-card");
     addItem("Bring to front", "front");
@@ -223,6 +225,7 @@
   }
 
   function fillMulti() {
+    addItem("Add comment", "add-comment");
     addItem("Duplicate", "duplicate");
     addItem("Delete", "delete", { danger: true, kbd: "⌫" });
   }
@@ -405,6 +408,15 @@
     }
     if (act === "add-table") {
       api.place("schema", { x: at.x, y: at.y });
+      return;
+    }
+    if (act === "add-comment") {
+      const lb = root.DataBasedLiveblocks;
+      const cardId = target.card && target.kind !== "multi" ? String(target.card.id) : "";
+      if (lb && typeof lb.startComment === "function") {
+        lb.startComment({ x: at.x, y: at.y, cardId, clientX: at.clientX, clientY: at.clientY });
+      }
+      if (lb && typeof lb.showComments === "function") lb.showComments();
       return;
     }
     if (act === "market") {

@@ -119,7 +119,7 @@
         state.dragged = false;
         return;
       }
-      if (ev.target.closest(".btn") || ev.target.closest("[data-edit]") || ev.target.closest("[data-next]") || ev.target.closest(".flow-port") || ev.target.closest(".wire-hit") || ev.target.closest(".wire-unlink") || ev.target.closest(".board-menu")) return;
+      if (ev.target.closest(".btn") || ev.target.closest("[data-edit]") || ev.target.closest("[data-next]") || ev.target.closest(".flow-port") || ev.target.closest(".wire-hit") || ev.target.closest(".wire-unlink") || ev.target.closest(".board-menu") || ev.target.closest(".comments-panel") || ev.target.closest(".comment-pin") || ev.target.closest(".comment-composer") || ev.target.closest("#comments-tool")) return;
 
       if (ev.target.closest(".note-text")) {
         const card = cardFromEvent(ev.target);
