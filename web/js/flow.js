@@ -1,5 +1,5 @@
 (function (root) {
-  const PIPE_NEXT = { schema: "repo", drizzle: "repo", prisma: "repo", repo: "logic", logic: "ctrl" };
+  const PIPE_NEXT = { schema: "repo", drizzle: "repo", prisma: "repo", kysely: "repo", convex: "repo", repo: "logic", logic: "ctrl" };
   const PIPE_LABEL = { repo: "Add repository", logic: "Add effects", ctrl: "Add controller" };
   const PIPE_SUFFIX = { repo: "Repo", logic: "Effect", ctrl: "Controller" };
 
@@ -10,7 +10,13 @@
   let plusGesture = null;
   let bound = false;
 
+  function kinds() {
+    return root.DataBasedKinds || null;
+  }
+
   function nextKindFor(kind) {
+    const k = kinds();
+    if (k && k.pipeNext) return k.pipeNext(kind);
     return PIPE_NEXT[kind] || null;
   }
 
@@ -270,7 +276,8 @@
   function nextControl(card) {
     const next = nextKindFor(card.kind);
     if (!next) return "";
-    const label = PIPE_LABEL[next];
+    const k = kinds();
+    const label = (k && k.addLabel && k.addLabel(next)) || PIPE_LABEL[next];
     return `<button type="button" class="card-next" data-next="${card.id}" title="${esc(label)}" aria-label="${esc(label)}">+</button>`;
   }
 
@@ -369,9 +376,10 @@
     if (!ctx || !from || !ctx.place) return null;
     const next = nextKindFor(from.kind);
     if (!next) return null;
+    const k = kinds();
     const already = edges().filter((e) => String(e.from) === String(from.id)).length;
     const card = ctx.place(next, {
-      title: stemName(from.body && from.body.title) + PIPE_SUFFIX[next],
+      title: stemName(from.body && from.body.title) + ((k && k.suffix && k.suffix(next)) || PIPE_SUFFIX[next] || ""),
       x: from.x + from.w + 72,
       y: from.y + already * 36,
     });

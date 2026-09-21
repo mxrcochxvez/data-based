@@ -1,103 +1,8 @@
-const CATALOG = [
-  {
-    id: "maps",
-    heading: "Notes",
-    items: [
-      { kind: "note", name: "Note", blurb: "A sticky on the board. Plain text.", vendor: "data-based" },
-      { kind: "mind", name: "Idea card", blurb: "A titled note for a decision or an open question.", vendor: "data-based" },
-    ],
-  },
-  {
-    id: "db",
-    heading: "Databases",
-    items: [
-      { kind: "schema", name: "SQL table", blurb: "CREATE TABLE with typed columns.", vendor: "data-based" },
-      { kind: "drizzle", name: "Drizzle table", blurb: "pgTable in TypeScript.", vendor: "Drizzle" },
-      { kind: "prisma", name: "Prisma model", blurb: "A model block from schema.prisma.", vendor: "Prisma" },
-    ],
-  },
-  {
-    id: "logic",
-    heading: "Business logic",
-    items: [
-      { kind: "logic", name: "Effect", blurb: "Input type, output type, and the effects inside the box.", vendor: "data-based" },
-      { kind: "ctrl", name: "Controller", blurb: "An HTTP entry that owns a use-case.", vendor: "data-based" },
-    ],
-  },
-  {
-    id: "repo",
-    heading: "Repository",
-    items: [
-      { kind: "repo", name: "Repo layout", blurb: "Folders and the boundary they protect.", vendor: "data-based" },
-    ],
-  },
-  {
-    id: "api",
-    heading: "APIs",
-    items: [
-      { kind: "gql", name: "GraphQL type", blurb: "An object type in SDL.", vendor: "GraphQL" },
-    ],
-  },
-];
-
-const KIND = {
-  note: { label: "Note", title: "Note" },
-  mind: { label: "Mind map", title: "Untitled idea" },
-  schema: { label: "SQL table", title: "users" },
-  drizzle: { label: "Drizzle", title: "users" },
-  prisma: { label: "Prisma", title: "User" },
-  logic: { label: "Effect", title: "onSignup" },
-  ctrl: { label: "Controller", title: "CreateUser" },
-  repo: { label: "Repository", title: "src/modules" },
-  gql: { label: "GraphQL", title: "User" },
-};
-
+const Kinds = window.DataBasedKinds;
 const ACTION_KINDS = ["db.read", "db.write", "http", "log", "queue", "throw", "assign", "call"];
 const GATE_WORDS = new Set(["if", "else", "match", "when"]);
-
-const VENDORS = {
-  schema: {
-    lang: "sql",
-    types: ["uuid", "text", "integer", "boolean", "timestamptz", "varchar"],
-    defaults: ["", "gen_random_uuid()", "now()", "true", "false"],
-    fns: ["", "primary key", "not null", "unique", "not null unique", "primary key not null"],
-  },
-  drizzle: {
-    lang: "typescript",
-    types: ["uuid", "text", "varchar", "serial", "integer", "boolean", "timestamp", "jsonb"],
-    defaults: ["", "defaultRandom()", "defaultNow()", "default(true)", "default(false)"],
-    fns: ["", "primaryKey()", "notNull()", "unique()", "primaryKey().notNull()", "notNull().unique()"],
-  },
-  prisma: {
-    lang: "prisma",
-    types: ["String", "Int", "Boolean", "DateTime", "Json", "Decimal", "Float", "BigInt", "Bytes"],
-    defaults: ["", "uuid()", "cuid()", "now()", "autoincrement()", "true", "false"],
-    fns: ["", "@id", "@unique", "@updatedAt", "@id @unique"],
-  },
-  gql: {
-    lang: "graphql",
-    types: ["ID", "String", "Int", "Float", "Boolean", "ID!", "String!"],
-    defaults: [""],
-    fns: ["", "!", "[]"],
-  },
-  type: {
-    lang: "typescript",
-    types: ["string", "number", "boolean", "Date", "unknown"],
-    defaults: [""],
-    fns: ["", "?"],
-  },
-  effects: {
-    lang: "effects",
-    kinds: ACTION_KINDS,
-    types: ACTION_KINDS,
-    defaults: [""],
-    fns: [""],
-  },
-};
-
-const PIPE_NEXT = { schema: "repo", drizzle: "repo", prisma: "repo", repo: "logic", logic: "ctrl" };
-const PIPE_LABEL = { repo: "Add repository", logic: "Add effects", ctrl: "Add controller" };
-const PIPE_SUFFIX = { repo: "Repo", logic: "Effect", ctrl: "Controller" };
+const TYPE_VOCAB = { types: ["string", "number", "boolean", "Date", "unknown"], defaults: [""], fns: ["", "?"] };
+const EFFECTS_VOCAB = { kinds: ACTION_KINDS, types: ACTION_KINDS, defaults: [""], fns: [""] };
 
 function flow() {
   return window.DataBasedFlow || null;
@@ -143,6 +48,7 @@ const empty = $("empty");
 const veil = $("veil");
 const market = $("market");
 const marketBody = $("market-body");
+const marketSearch = $("market-search");
 const editDlg = $("edit");
 const editBody = $("edit-body");
 const editTitle = $("edit-title");
@@ -231,10 +137,7 @@ function normalizeCard(c) {
   c.next = c.next || null;
   c.prev = c.prev || null;
   c.links = Array.isArray(c.links) ? c.links : (c.next != null ? [c.next] : []);
-  if (isSchema(c.kind) && c.body && c.body.fields) {
-    c.body.fields = hydrateFields(c.kind, c.body.fields);
-  }
-  if (c.kind === "note" && c.body && c.body.note == null) c.body.note = "";
+  if (c.body) c.body = Kinds.hydrate(c.kind, c.body);
   if (c.kind === "logic" && c.body) {
     c.body.effects = normalizeFxList(c.body.effects);
     if (c.body.effectsSrc == null) c.body.effectsSrc = effectsText(c.body.effects);
@@ -321,12 +224,18 @@ function persist(opts) {
 
 hydrateBoard(currentBoard());
 
-function isSchema(kind) {
-  return kind === "schema" || kind === "drizzle" || kind === "prisma" || kind === "gql";
+function familyOf(kind) {
+  return Kinds.family(kind);
 }
 
-function isTable(kind) {
-  return kind === "schema" || kind === "drizzle" || kind === "prisma";
+function isFields(kind) {
+  const fam = familyOf(kind);
+  return fam === "table" || fam === "type";
+}
+
+function isCoded(kind) {
+  const fam = familyOf(kind);
+  return fam === "table" || fam === "type" || fam === "route" || fam === "list";
 }
 
 function ident(name, fallback) {
@@ -345,185 +254,6 @@ function modelName(title) {
 function stemName(title) {
   const raw = ident(String(title || "").replace(/(Table|Model|Repo|Service|Effect|Controller|s)$/i, ""), "Item");
   return raw.charAt(0).toUpperCase() + raw.slice(1);
-}
-
-function fieldLine(f) {
-  const def = f.def || "";
-  const fns = f.fns || "";
-  let extra = f.extra || "";
-  if (def || fns) extra = [fns, def ? "default " + def : ""].filter(Boolean).join(" ");
-  return { name: f.name || "col", type: f.type || "text", extra, def, fns };
-}
-
-function splitExtra(kind, extra) {
-  const e = extra || "";
-  if (kind === "prisma") {
-    const dm = e.match(/@default\(([^)]*)\)/);
-    return { def: dm ? dm[1] : "", fns: e.replace(/@default\([^)]*\)/g, "").trim() };
-  }
-  if (kind === "drizzle") {
-    const parts = e.split(".").map((s) => s.trim()).filter(Boolean);
-    return {
-      def: parts.filter((p) => /^default/i.test(p)).join("."),
-      fns: parts.filter((p) => !/^default/i.test(p)).join("."),
-    };
-  }
-  if (kind === "schema") {
-    const dm = e.match(/\bdefault\s+(\S+)/i);
-    return { def: dm ? dm[1] : "", fns: e.replace(/\bdefault\s+\S+/i, "").trim() };
-  }
-  return { def: "", fns: e };
-}
-
-function hydrateFields(kind, fields) {
-  return (fields || []).map((f) => {
-    const split = splitExtra(kind, f.extra || "");
-    return { name: f.name, type: f.type, def: f.def || split.def, fns: f.fns || split.fns, extra: f.extra || "" };
-  });
-}
-
-const LANG = {
-  schema: {
-    rawLabel: "SQL",
-    lang: "sql",
-    generate(title, fields) {
-      const cols = fields.map((f) => {
-        const row = fieldLine(f);
-        const tail = [row.fns, row.def ? "default " + row.def : row.extra].filter(Boolean).join(" ");
-        return `  ${row.name} ${row.type}${tail ? " " + tail : ""}`;
-      }).join(",\n");
-      return `create table ${sqlIdent(title)} (\n${cols}\n);`;
-    },
-    parse(text) {
-      const src = String(text || "");
-      const head = src.match(/create\s+table\s+([A-Za-z0-9_."]+)/i);
-      const open = src.indexOf("(");
-      const close = src.lastIndexOf(")");
-      if (!head || open < 0 || close <= open) return { ok: false, error: "Need a CREATE TABLE ( … ) block." };
-      const fields = [];
-      for (const part of splitTop(src.slice(open + 1, close))) {
-        const bits = part.trim().replace(/,$/, "").split(/\s+/);
-        if (bits.length < 2) continue;
-        fields.push({ name: bits[0].replace(/"/g, ""), type: bits[1], extra: bits.slice(2).join(" ") });
-      }
-      if (!fields.length) return { ok: false, error: "No columns found in the table body." };
-      return { ok: true, title: head[1].replace(/"/g, ""), fields: hydrateFields("schema", fields) };
-    },
-  },
-  drizzle: {
-    rawLabel: "Drizzle",
-    lang: "typescript",
-    generate(title, fields) {
-      const table = sqlIdent(title);
-      const cols = fields.map((f) => {
-        const row = fieldLine(f);
-        const call = drizzleCall(row.type, row.name);
-        const chain = [row.fns, row.def].filter(Boolean).join(".");
-        return `  ${row.name}: ${call}${chain ? "." + chain.replace(/^\.+/, "") : ""},`;
-      }).join("\n");
-      return `export const ${table} = pgTable("${table}", {\n${cols}\n});`;
-    },
-    parse(text) {
-      const src = String(text || "");
-      const head = src.match(/(?:export\s+const\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(pgTable|mysqlTable|sqliteTable)\(\s*["']([^"']+)["']/);
-      const open = src.indexOf("{");
-      const close = src.lastIndexOf("}");
-      if (!head || open < 0 || close <= open) return { ok: false, error: "Need a pgTable / mysqlTable / sqliteTable({ … }) definition." };
-      const fields = [];
-      for (const part of splitTop(src.slice(open + 1, close))) {
-        const m = part.trim().replace(/,$/, "").match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([a-zA-Z]+)\(\s*["']?([^"')]+)?["']?\s*\)(.*)$/);
-        if (!m) continue;
-        fields.push({ name: m[1], type: m[2], extra: m[4].replace(/^\./, "").trim() });
-      }
-      if (!fields.length) return { ok: false, error: "No column helpers found in the table object." };
-      return { ok: true, title: head[3] || head[1], fields: hydrateFields("drizzle", fields) };
-    },
-  },
-  prisma: {
-    rawLabel: "Prisma",
-    lang: "prisma",
-    generate(title, fields) {
-      const name = modelName(title);
-      const cols = fields.map((f) => {
-        const row = fieldLine(f);
-        const raw = String(row.def || "").trim();
-        const inner = (raw.match(/^@default\((.*)\)$/) || [])[1];
-        const def = raw ? `@default(${inner != null ? inner : raw})` : "";
-        const extra = [row.fns, def].filter(Boolean).join(" ");
-        const pad = row.name.length < 6 ? " ".repeat(6 - row.name.length) : " ";
-        return `  ${row.name}${pad}${row.type}${extra ? " " + extra : ""}`;
-      }).join("\n");
-      return `model ${name} {\n${cols}\n}`;
-    },
-    parse(text) {
-      const src = String(text || "");
-      const head = src.match(/model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/);
-      const open = src.indexOf("{");
-      const close = src.lastIndexOf("}");
-      if (!head || open < 0 || close <= open) return { ok: false, error: "Need a Prisma model Name { … } block." };
-      const fields = [];
-      for (const line of src.slice(open + 1, close).split("\n")) {
-        const t = line.trim();
-        if (!t || t.startsWith("//") || t.startsWith("@@")) continue;
-        const bits = t.split(/\s+/);
-        if (bits.length < 2) continue;
-        fields.push({ name: bits[0], type: bits[1], extra: bits.slice(2).join(" ") });
-      }
-      if (!fields.length) return { ok: false, error: "No fields found in the model." };
-      return { ok: true, title: head[1], fields: hydrateFields("prisma", fields) };
-    },
-  },
-  gql: {
-    rawLabel: "GraphQL SDL",
-    lang: "graphql",
-    generate(title, fields) {
-      const name = modelName(title);
-      const cols = fields.map((f) => {
-        const row = fieldLine(f);
-        return `  ${row.name}: ${row.type}${row.fns ? " " + row.fns : ""}`;
-      }).join("\n");
-      return `type ${name} {\n${cols}\n}`;
-    },
-    parse(text) {
-      const src = String(text || "");
-      const head = src.match(/type\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/);
-      const open = src.indexOf("{");
-      const close = src.lastIndexOf("}");
-      if (!head || open < 0 || close <= open) return { ok: false, error: "Need a GraphQL type Name { … } block." };
-      const fields = [];
-      for (const line of src.slice(open + 1, close).split("\n")) {
-        const t = line.trim().replace(/,$/, "");
-        if (!t || t.startsWith("#")) continue;
-        const m = t.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^\s]+)(.*)$/);
-        if (!m) continue;
-        fields.push({ name: m[1], type: m[2], extra: m[3].trim() });
-      }
-      if (!fields.length) return { ok: false, error: "No fields found in the type." };
-      return { ok: true, title: head[1], fields: hydrateFields("gql", fields) };
-    },
-  },
-};
-
-function drizzleCall(type, name) {
-  const t = type || "text";
-  if (/[()]/.test(t) && /^[a-zA-Z]+/.test(t)) return t.includes("(") ? t : `${t}("${name}")`;
-  return `${t}("${name}")`;
-}
-
-function splitTop(src) {
-  const out = [];
-  let buf = "";
-  let depth = 0;
-  for (const ch of src) {
-    if (ch === "(" || ch === "{" || ch === "[") depth += 1;
-    if (ch === ")" || ch === "}" || ch === "]") depth = Math.max(0, depth - 1);
-    if (ch === "," && depth === 0) {
-      if (buf.trim()) out.push(buf);
-      buf = "";
-    } else buf += ch;
-  }
-  if (buf.trim()) out.push(buf);
-  return out;
 }
 
 function typeExpr(label, fields) {
@@ -659,76 +389,21 @@ function parseEffects(text) {
   return parseFxLines(text);
 }
 
-function defaultFields(kind) {
-  if (kind === "prisma") {
-    return [
-      { name: "id", type: "String", def: "uuid()", fns: "@id" },
-      { name: "email", type: "String", def: "", fns: "@unique" },
-    ];
-  }
-  if (kind === "drizzle") {
-    return [
-      { name: "id", type: "uuid", def: "defaultRandom()", fns: "primaryKey()" },
-      { name: "email", type: "text", def: "", fns: "notNull().unique()" },
-    ];
-  }
-  if (kind === "gql") {
-    return [
-      { name: "id", type: "ID!", def: "", fns: "" },
-      { name: "email", type: "String!", def: "", fns: "" },
-    ];
-  }
-  return [
-    { name: "id", type: "uuid", def: "", fns: "primary key" },
-    { name: "email", type: "text", def: "", fns: "not null unique" },
-  ];
-}
-
 function blank(kind) {
-  const meta = KIND[kind];
-  if (kind === "note") return { title: "Note", note: "" };
-  if (isSchema(kind)) {
-    const fields = defaultFields(kind);
-    return { title: meta.title, fields, source: LANG[kind].generate(meta.title, fields) };
-  }
+  const body = Kinds.blank(kind);
   if (kind === "logic") {
-    const input = [{ name: "userId", type: "string", def: "", fns: "" }, { name: "email", type: "string", def: "", fns: "" }];
-    const output = [{ name: "ok", type: "boolean", def: "", fns: "" }];
-    const effects = [
-      {
-        type: "if",
-        cond: "email",
-        then: [
-          { type: "action", kind: "db.write", target: "users" },
-          { type: "action", kind: "http", target: "POST /invite" },
-        ],
-        else: [{ type: "action", kind: "throw", target: "missing email" }],
-      },
-    ];
-    return {
-      title: meta.title,
-      input,
-      output,
-      effects,
-      inputSrc: typeExpr("Input", input),
-      outputSrc: typeExpr("Output", output),
-      effectsSrc: effectsText(effects),
-    };
+    body.inputSrc = typeExpr("Input", body.input);
+    body.outputSrc = typeExpr("Output", body.output);
+    body.effectsSrc = effectsText(body.effects);
   }
-  if (kind === "ctrl") return { title: meta.title, note: "POST /users → create user, return 201" };
-  if (kind === "repo") return { title: meta.title, note: "findById, save, list" };
-  return { title: meta.title, note: "What has to be true?" };
+  return body;
 }
 
 function preview(card) {
-  if (card.kind === "note") return "";
-  if (isSchema(card.kind)) {
-    return `<ul>${card.body.fields.map((f) => `<li>${esc(f.name)} <code>${esc(f.type)}</code></li>`).join("")}</ul>`;
-  }
-  if (card.kind === "logic") {
+  if (familyOf(card.kind) === "effect") {
     return `<ul>${previewFx(card.body.effects).map((line) => `<li><code>${esc(line)}</code></li>`).join("")}</ul>`;
   }
-  return `<p>${esc(card.body.note)}</p>`;
+  return Kinds.preview(card);
 }
 
 function esc(s) {
@@ -787,16 +462,73 @@ function gridRow(f) {
 
 function fieldGrid(fields, vendor) {
   return `
-    <div class="sheet-table grid" data-vendor="${vendor}">
+    <div class="sheet-table grid" data-vendor="${vendor}" data-grid="fields">
       <table>
         <thead>
           <tr><th>Name</th><th>Type</th><th>Default</th><th>Functions</th><th></th></tr>
         </thead>
-        <tbody>${fields.map(gridRow).join("")}</tbody>
+        <tbody>${(fields || []).map(gridRow).join("")}</tbody>
       </table>
     </div>
     <button type="button" class="btn ghost add-row" data-add-row>+</button>
   `;
+}
+
+function routeRow(r) {
+  return `
+    <tr>
+      <td>${comboCell("rmethod", r.method || "GET", "types")}</td>
+      <td><input type="text" name="rpath" value="${esc(r.path || "/")}" placeholder="/path"></td>
+      <td><input type="text" name="rstatus" value="${esc(r.status || "200")}" placeholder="200"></td>
+      <td><input type="text" name="rhandler" value="${esc(r.handler || "")}" placeholder="handler"></td>
+      <td class="kill"><button type="button" class="icon-x drop-field" aria-label="Remove route">×</button></td>
+    </tr>
+  `;
+}
+
+function routeGrid(routes, vendor) {
+  return `
+    <div class="sheet-table grid" data-vendor="${vendor}" data-grid="routes">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Path</th><th>Status</th><th>Handler</th><th></th></tr>
+        </thead>
+        <tbody>${(routes || []).map(routeRow).join("")}</tbody>
+      </table>
+    </div>
+    <button type="button" class="btn ghost add-row" data-add-row>+</button>
+  `;
+}
+
+function entryRow(e) {
+  return `
+    <tr>
+      <td><input type="text" name="ename" value="${esc(e.name || "")}" placeholder="method"></td>
+      <td><input type="text" name="esig" value="${esc(e.sig || "()")}" placeholder="()"></td>
+      <td class="kill"><button type="button" class="icon-x drop-field" aria-label="Remove method">×</button></td>
+    </tr>
+  `;
+}
+
+function entryGrid(entries, vendor) {
+  return `
+    <div class="sheet-table grid" data-vendor="${vendor}" data-grid="entries">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Signature</th><th></th></tr>
+        </thead>
+        <tbody>${(entries || []).map(entryRow).join("")}</tbody>
+      </table>
+    </div>
+    <button type="button" class="btn ghost add-row" data-add-row>+</button>
+  `;
+}
+
+function kindGrid(kind, body) {
+  const fam = familyOf(kind);
+  if (fam === "route") return routeGrid(body.routes, kind);
+  if (fam === "list") return entryGrid(body.entries, kind);
+  return fieldGrid(body.fields, kind);
 }
 
 function codeBox(name, lang, value) {
@@ -839,31 +571,25 @@ function setTa(ta, value) {
 }
 
 function offerMark(kind) {
-  const ink = 'fill="none" stroke="#111" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"';
-  const marks = {
-    note: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M6 4.5h9.5L18.5 8v11.5H6V4.5Zm9.5 0V8H18.5"/></svg></span>`,
-    mind: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M12 4.5 19 9v6l-7 4.5L5 15V9l7-4.5Z"/><path ${ink} d="M12 9v6M9 12h6"/></svg></span>`,
-    schema: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse ${ink} cx="12" cy="7" rx="7" ry="2.4"/><path ${ink} d="M5 7v10c0 1.4 3.1 2.4 7 2.4s7-1 7-2.4V7"/><path ${ink} d="M5 12c0 1.4 3.1 2.4 7 2.4s7-1 7-2.4"/></svg></span>`,
-    drizzle: `<span class="offer-mark is-drizzle" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#111" d="M7.2 5.2c2.1-2.4 5.6-2.6 7.9-.4 1.8 1.7 2.2 4.3 1.2 6.5l-4.1 8.2a2 2 0 0 1-3.6 0L4.5 11.3c-1-2.2-.6-4.8 1.2-6.5  .5-.4 1-.8 1.5-1.1Zm4.8 3.1c.7 0 1.3.6 1.3 1.4v.2c0 .7-.6 1.3-1.3 1.3s-1.3-.6-1.3-1.3v-.2c0-.8.6-1.4 1.3-1.4Zm0 4.6c.7 0 1.3.6 1.3 1.3v.3c0 .7-.6 1.3-1.3 1.3s-1.3-.6-1.3-1.3v-.3c0-.7.6-1.3 1.3-1.3Z"/></svg></span>`,
-    prisma: `<span class="offer-mark is-prisma" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#fff" d="M16.9 2.1 4.6 21.4c-.4.7.2 1.6 1 1.6h7.4c.6 0 1.1-.3 1.3-.9L19.8 3.4c.4-.8-.2-1.7-1.1-1.7h-1.8Z"/></svg></span>`,
-    logic: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M7 5h10v4h-4v10H11V9H7V5Z"/></svg></span>`,
-    ctrl: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M5 8h14v3H5V8Zm0 5h14v3H5v-3Zm0 5h14v3H5v-3Z"/></svg></span>`,
-    repo: `<span class="offer-mark is-ink" aria-hidden="true"><svg viewBox="0 0 24 24"><path ${ink} d="M4.5 8.5h6l1.5 2h7.5v8.5h-15V8.5Zm0 0V7l2.2-2h4.2l1.1 1.5"/></svg></span>`,
-    gql: `<span class="offer-mark is-gql" aria-hidden="true"><svg viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.8 20 8.4v7.2L12 20.2 4 15.6V8.4L12 3.8Z"/><path d="M12 3.8v16.4M4.2 8.5l15.6 7M19.8 8.5l-15.6 7"/></g><circle cx="12" cy="3.8" r="1.45" fill="#fff"/><circle cx="20" cy="8.4" r="1.45" fill="#fff"/><circle cx="20" cy="15.6" r="1.45" fill="#fff"/><circle cx="12" cy="20.2" r="1.45" fill="#fff"/><circle cx="4" cy="15.6" r="1.45" fill="#fff"/><circle cx="4" cy="8.4" r="1.45" fill="#fff"/></svg></span>`,
-  };
-  return marks[kind] || marks.note;
+  return Kinds.markHtml(kind);
 }
 
 function renderCatalog() {
-  const items = CATALOG.flatMap((sec) => sec.items.map((it) => ({ ...it, sec: sec.id })));
-  marketBody.innerHTML = `<ul class="market-grid" role="list">${items.map((it) => `
-    <li>
-      <button type="button" class="offer" data-kind="${it.kind}" data-sec="${it.sec}" title="${esc(it.blurb)}" aria-label="${esc(it.name)}. ${esc(it.blurb)}">
-        ${offerMark(it.kind)}
-        <span class="offer-name">${esc(it.name)}</span>
+  marketBody.innerHTML = `<ul class="market-grid" role="list">${Kinds.all().map((s) => `
+    <li data-kind="${s.kind}">
+      <button type="button" class="offer" data-kind="${s.kind}" data-sec="${s.section}" title="${esc(s.blurb)}" aria-label="${esc(s.name)}. ${esc(s.blurb)}">
+        ${Kinds.markHtml(s.kind)}
+        <span class="offer-name">${esc(s.name)}</span>
       </button>
     </li>
   `).join("")}</ul>`;
+}
+
+function applySearch(q) {
+  const keep = new Set(Kinds.search(q).map((s) => s.kind));
+  marketBody.querySelectorAll("li").forEach((li) => {
+    li.hidden = !keep.has(li.dataset.kind);
+  });
 }
 
 function hideTip() {
@@ -889,9 +615,15 @@ function openMarket(section) {
   marketBody.querySelectorAll(".offer").forEach((el) => {
     el.classList.toggle("is-dim", Boolean(filter) && el.dataset.sec !== filter);
   });
-  const first = marketBody.querySelector(filter ? `.offer[data-sec="${filter}"]` : ".offer");
-  if (first) first.focus();
-  else if (market) market.focus();
+  if (marketSearch) {
+    marketSearch.value = "";
+    applySearch("");
+    marketSearch.focus();
+  } else {
+    const first = marketBody.querySelector(filter ? `.offer[data-sec="${filter}"]` : ".offer");
+    if (first) first.focus();
+    else if (market) market.focus();
+  }
 }
 
 function closeMarket() {
@@ -903,7 +635,7 @@ function closeMarket() {
 function nextKindFor(kind) {
   const f = flow();
   if (f && f.nextKindFor) return f.nextKindFor(kind);
-  return PIPE_NEXT[kind] || null;
+  return Kinds.pipeNext(kind);
 }
 
 function cardNode(card) {
@@ -916,13 +648,13 @@ function cardNode(card) {
   el.style.zIndex = String(card.z || 1);
   el.dataset.id = String(card.id);
   el.tabIndex = 0;
-  el.setAttribute("aria-label", `${KIND[card.kind].label} ${card.body.title}`);
+  el.setAttribute("aria-label", `${Kinds.label(card.kind)} ${card.body.title}`);
   el.setAttribute("aria-selected", state.sel.has(card.id) ? "true" : "false");
   const f = flow();
   const nextBtn = f && f.nextControl
     ? f.nextControl(card)
     : (nextKindFor(card.kind)
-      ? `<button type="button" class="card-next" data-next="${card.id}" aria-label="${esc(PIPE_LABEL[nextKindFor(card.kind)])}">+</button>`
+      ? `<button type="button" class="card-next" data-next="${card.id}" aria-label="${esc(Kinds.addLabel(nextKindFor(card.kind)))}">+</button>`
       : "");
   if (card.kind === "note") {
     if (f && f.fillNote) f.fillNote(el, card);
@@ -936,7 +668,7 @@ function cardNode(card) {
   } else {
     el.innerHTML = `
       <div class="card-bar">
-        <span class="card-kind">${esc(KIND[card.kind].label)}</span>
+        <span class="card-kind">${esc(Kinds.label(card.kind))}</span>
         <span class="card-title">${esc(card.body.title)}</span>
         <button type="button" class="card-edit" data-edit="${card.id}">Edit</button>
       </div>
@@ -1034,13 +766,14 @@ function place(kind, opts) {
   const body = blank(kind);
   if (o.title) body.title = o.title;
   const noteCount = state.cards.filter((c) => c.kind === "note").length;
+  const size = Kinds.size(kind);
   const card = {
     id: state.nextId++,
     kind,
     x: o.x != null ? o.x : (kind === "note" ? 88 + noteCount * 28 : state.placeAt.x),
     y: o.y != null ? o.y : (kind === "note" ? 380 + noteCount * 20 : state.placeAt.y),
-    w: kind === "note" ? 200 : kind === "logic" ? 280 : 248,
-    h: kind === "note" ? 160 : 164,
+    w: size.w,
+    h: size.h,
     body,
     next: null,
     prev: o.prev || null,
@@ -1079,7 +812,7 @@ function addLayer(from) {
   if (!next) return;
   const already = (state.edges || []).filter((e) => String(e.from) === String(from.id)).length;
   place(next, {
-    title: stemName(from.body.title) + PIPE_SUFFIX[next],
+    title: stemName(from.body.title) + Kinds.suffix(next),
     x: from.x + from.w + 72,
     y: from.y + already * 36,
     prev: from.id,
@@ -1101,24 +834,42 @@ function removeSel() {
   persist();
 }
 
-function readFields(box) {
-  const rows = [...box.querySelectorAll("tbody tr")];
-  if (rows.length) {
-    return rows.map((row) => ({
-      name: (row.querySelector('[name="fname"]') || {}).value || "col",
-      type: (row.querySelector('[name="ftype"]') || {}).value || "text",
-      def: (row.querySelector('[name="fdef"]') || {}).value || "",
-      fns: (row.querySelector('[name="ffns"]') || {}).value || "",
-    }));
-  }
-  const names = [...box.querySelectorAll('[name="fname"]')];
-  const types = [...box.querySelectorAll('[name="ftype"]')];
-  return names.map((n, i) => ({
-    name: n.value || "col",
-    type: types[i] ? types[i].value || "text" : "text",
-    def: "",
-    fns: "",
+function readRoutes(box) {
+  return [...box.querySelectorAll("tbody tr")].map((row) => ({
+    method: (row.querySelector('[name="rmethod"]') || {}).value || "GET",
+    path: (row.querySelector('[name="rpath"]') || {}).value || "/",
+    status: (row.querySelector('[name="rstatus"]') || {}).value || "200",
+    handler: (row.querySelector('[name="rhandler"]') || {}).value || "",
   }));
+}
+
+function readEntries(box) {
+  return [...box.querySelectorAll("tbody tr")].map((row) => ({
+    name: (row.querySelector('[name="ename"]') || {}).value || "method",
+    sig: (row.querySelector('[name="esig"]') || {}).value || "()",
+  }));
+}
+
+function codedRows(kind, box) {
+  const fam = familyOf(kind);
+  if (fam === "route") return readRoutes(box);
+  if (fam === "list") return readEntries(box);
+  return readFields(box);
+}
+
+function rowHtml(kind, row) {
+  const fam = familyOf(kind);
+  if (fam === "route") return routeRow(row);
+  if (fam === "list") return entryRow(row);
+  return gridRow(row);
+}
+
+function emptyRow(kind) {
+  const fam = familyOf(kind);
+  const pack = Kinds.vocab(kind);
+  if (fam === "route") return { method: (pack.types || ["GET"])[0], path: "/", status: "201", handler: "" };
+  if (fam === "list") return { name: "", sig: "()" };
+  return { name: "", type: (pack.types || ["text"])[0], def: "", fns: "" };
 }
 
 function fxTools() {
@@ -1262,7 +1013,7 @@ function setErr(msg) {
 }
 
 function openEdit(card) {
-  if (card.kind === "note") {
+  if (Kinds.spec(card.kind).inline) {
     const f = flow();
     if (f && f.startNoteEdit) f.startNoteEdit(card);
     else {
@@ -1274,20 +1025,22 @@ function openEdit(card) {
   state.editing = card.id;
   state.sel = new Set([card.id]);
   editTitle.textContent = card.body.title;
-  editKind.textContent = KIND[card.kind].label;
+  editKind.textContent = Kinds.label(card.kind);
   setErr("");
-  if (isSchema(card.kind)) {
-    const lang = LANG[card.kind];
-    const parsed = lang.parse(card.body.source);
-    const source = parsed.ok ? card.body.source : lang.generate(card.body.title, card.body.fields);
+  const fam = familyOf(card.kind);
+  const lang = Kinds.lang(card.kind);
+  if (isCoded(card.kind)) {
+    const rows = fam === "route" ? card.body.routes : fam === "list" ? card.body.entries : card.body.fields;
+    const parsed = Kinds.parse(card.kind, card.body.source || "");
+    const source = parsed.ok ? card.body.source : Kinds.generate(card.kind, card.body.title, rows);
     editBody.innerHTML = `
       <label class="field"><span>Name</span><input type="text" name="title" value="${esc(card.body.title)}"></label>
       <div class="split">
-        <div>${fieldGrid(card.body.fields, card.kind)}</div>
-        <label class="field"><span>${esc(lang.rawLabel)}</span>${codeBox("source", lang.lang, source)}</label>
+        <div>${kindGrid(card.kind, card.body)}</div>
+        <label class="field"><span>${esc(lang.rawLabel)}</span>${codeBox("source", lang.id, source)}</label>
       </div>
     `;
-  } else if (card.kind === "logic") {
+  } else if (fam === "effect") {
     editBody.innerHTML = `
       <label class="field"><span>Name</span><input type="text" name="title" value="${esc(card.body.title)}"></label>
       <section class="block" data-slot="input">
@@ -1313,9 +1066,12 @@ function openEdit(card) {
       </section>
     `;
   } else {
+    const note = card.body.note || "";
+    const source = card.body.source != null ? card.body.source : note;
     editBody.innerHTML = `
       <label class="field"><span>Name</span><input type="text" name="title" value="${esc(card.body.title)}"></label>
-      <label class="field"><span>Notes</span><textarea name="note">${esc(card.body.note)}</textarea></label>
+      <label class="field"><span>Notes</span><textarea name="note">${esc(note)}</textarea></label>
+      <label class="field"><span>${esc(lang.rawLabel || "Markdown")}</span>${codeBox("source", lang.id || "markdown", source)}</label>
     `;
   }
   document.body.classList.add("is-modal");
@@ -1329,19 +1085,19 @@ function editingCard() {
 
 function syncSchemaFromFields() {
   const card = editingCard();
-  if (!card || !isSchema(card.kind)) return;
+  if (!card || !isCoded(card.kind)) return;
   const title = editBody.querySelector('[name="title"]').value || card.body.title;
-  const fields = readFields(editBody);
-  setTa(editBody.querySelector('[name="source"]'), LANG[card.kind].generate(title, fields));
+  const rows = codedRows(card.kind, editBody);
+  setTa(editBody.querySelector('[name="source"]'), Kinds.generate(card.kind, title, rows));
   setErr("");
 }
 
 function syncSchemaFromSource() {
   const card = editingCard();
-  if (!card || !isSchema(card.kind)) return;
+  if (!card || !isCoded(card.kind)) return;
   const ta = editBody.querySelector('[name="source"]');
   paintCode(ta);
-  const parsed = LANG[card.kind].parse(ta.value);
+  const parsed = Kinds.parse(card.kind, ta.value);
   if (!parsed.ok) {
     setErr(parsed.error);
     return;
@@ -1351,7 +1107,8 @@ function syncSchemaFromSource() {
   if (parsed.title && document.activeElement !== title) title.value = parsed.title;
   const tbody = editBody.querySelector("tbody");
   if (!tbody || (document.activeElement && tbody.contains(document.activeElement))) return;
-  tbody.innerHTML = parsed.fields.map(gridRow).join("");
+  const rows = parsed.fields || parsed.routes || parsed.entries || [];
+  tbody.innerHTML = rows.map((row) => rowHtml(card.kind, row)).join("");
 }
 
 function syncTypeSlot(slot, label) {
@@ -1404,15 +1161,19 @@ function saveEdit() {
   if (!card) return;
   const titleEl = editBody.querySelector('[name="title"]');
   if (titleEl) card.body.title = titleEl.value || card.body.title;
-  if (isSchema(card.kind)) {
-    card.body.fields = readFields(editBody);
-    card.body.source = editBody.querySelector('[name="source"]').value;
-    const parsed = LANG[card.kind].parse(card.body.source);
-    if (parsed.ok) {
-      card.body.fields = parsed.fields;
-      if (parsed.title) card.body.title = parsed.title;
-    }
-  } else if (card.kind === "logic") {
+  const fam = familyOf(card.kind);
+  if (isCoded(card.kind)) {
+    const sourceEl = editBody.querySelector('[name="source"]');
+    card.body.source = sourceEl ? sourceEl.value : card.body.source;
+    const parsed = Kinds.parse(card.kind, card.body.source || "");
+    const rows = parsed.ok
+      ? (parsed.fields || parsed.routes || parsed.entries)
+      : codedRows(card.kind, editBody);
+    if (fam === "route") card.body.routes = rows;
+    else if (fam === "list") card.body.entries = rows;
+    else card.body.fields = rows;
+    if (parsed.ok && parsed.title) card.body.title = parsed.title;
+  } else if (fam === "effect") {
     const inputBox = editBody.querySelector('[data-slot="input"]');
     const outputBox = editBody.querySelector('[data-slot="output"]');
     const fxBox = editBody.querySelector('[data-slot="effects"]');
@@ -1429,9 +1190,11 @@ function saveEdit() {
       card.body.effects = readEffects(fxBox);
       card.body.effectsSrc = effectsText(card.body.effects);
     }
-  } else if (card.kind !== "note") {
+  } else if (!Kinds.spec(card.kind).inline) {
     const note = editBody.querySelector('[name="note"]');
     if (note) card.body.note = note.value || "";
+    const source = editBody.querySelector('[name="source"]');
+    if (source) card.body.source = source.value;
   }
   state.editing = null;
   renderCards();
@@ -1448,9 +1211,13 @@ const comboPop = $("combo-pop");
 let comboOpen = null;
 
 function comboOpts(input) {
+  const list = input.dataset.combo;
+  if (list === "kinds") return ACTION_KINDS;
   const vendor = input.closest("[data-vendor]")?.dataset.vendor || "schema";
-  const pack = VENDORS[vendor] || VENDORS.schema;
-  return pack[input.dataset.combo] || [];
+  if (vendor === "type") return TYPE_VOCAB[list] || [];
+  if (vendor === "effects") return EFFECTS_VOCAB[list] || [];
+  const pack = Kinds.vocab(vendor);
+  return (pack && pack[list]) || [];
 }
 
 function viewBox() {
@@ -1696,6 +1463,21 @@ marketBody.addEventListener("click", (ev) => {
   place(offer.dataset.kind);
 });
 
+if (marketSearch) {
+  marketSearch.addEventListener("input", () => applySearch(marketSearch.value));
+  marketSearch.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const first = marketBody.querySelector("li:not([hidden]) .offer");
+      if (first) place(first.dataset.kind);
+    }
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      marketBody.querySelector("li:not([hidden]) .offer")?.focus();
+    }
+  });
+}
+
 $("edit-cancel").addEventListener("click", () => {
   state.editing = null;
   editDlg.close();
@@ -1714,14 +1496,13 @@ editBody.addEventListener("click", (ev) => {
     return;
   }
   if (ev.target.dataset.addRow != null || ev.target.classList.contains("add-row") || ev.target.id === "add-field") {
-    const grid = ev.target.closest("div")?.querySelector?.("tbody") || editBody.querySelector("tbody");
-    const vendor = ev.target.closest("[data-vendor]") || ev.target.previousElementSibling;
-    const pack = VENDORS[(vendor && vendor.dataset.vendor) || "schema"];
     const tbody = ev.target.closest(".split")?.querySelector("tbody") || editBody.querySelector("tbody");
     const y = editBody.scrollTop;
-    tbody.insertAdjacentHTML("beforeend", gridRow({ name: "", type: pack.types[0], def: "", fns: "" }));
+    const card = editingCard();
+    const kind = card && isCoded(card.kind) ? card.kind : (ev.target.closest("[data-vendor]")?.dataset.vendor || "schema");
+    tbody.insertAdjacentHTML("beforeend", rowHtml(kind, emptyRow(kind)));
     editBody.scrollTop = y;
-    if (editingCard() && isSchema(editingCard().kind)) syncSchemaFromFields();
+    if (card && isCoded(card.kind)) syncSchemaFromFields();
     else {
       const slot = ev.target.closest(".block");
       if (slot) syncTypeSlot(slot.dataset.slot, slot.dataset.slot === "input" ? "Input" : "Output");
@@ -1766,7 +1547,7 @@ editBody.addEventListener("click", (ev) => {
   }
   if (ev.target.classList.contains("drop-field")) {
     ev.target.closest("tr").remove();
-    if (editingCard() && isSchema(editingCard().kind)) syncSchemaFromFields();
+    if (editingCard() && isCoded(editingCard().kind)) syncSchemaFromFields();
     else {
       const slot = ev.target.closest(".block");
       if (slot) syncTypeSlot(slot.dataset.slot, slot.dataset.slot === "input" ? "Input" : "Output");
@@ -1796,11 +1577,14 @@ editBody.addEventListener("input", (ev) => {
     if (combo) openCombo(combo, t.value);
   }
   if (t.name === "source") {
-    syncSchemaFromSource();
+    if (editingCard() && isCoded(editingCard().kind)) syncSchemaFromSource();
+    else paintCode(t);
     return;
   }
-  if (t.name === "fname" || t.name === "ftype" || t.name === "fdef" || t.name === "ffns" || t.name === "title") {
-    if (editingCard() && isSchema(editingCard().kind)) syncSchemaFromFields();
+  if (t.name === "fname" || t.name === "ftype" || t.name === "fdef" || t.name === "ffns" || t.name === "title"
+    || t.name === "rmethod" || t.name === "rpath" || t.name === "rstatus" || t.name === "rhandler"
+    || t.name === "ename" || t.name === "esig") {
+    if (editingCard() && isCoded(editingCard().kind)) syncSchemaFromFields();
     const slot = t.closest(".block");
     if (slot && (slot.dataset.slot === "input" || slot.dataset.slot === "output")) {
       syncTypeSlot(slot.dataset.slot, slot.dataset.slot === "input" ? "Input" : "Output");
