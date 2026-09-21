@@ -12,6 +12,7 @@
   const KICK_MS = 400;
 
   let lastPayload = "";
+  let lastPutAt = 0;
   let timer = 0;
   let kickTimer = 0;
   let delay = INTERVAL_MS;
@@ -93,6 +94,14 @@
 
   function pendingPersist() {
     return Boolean(global.Persist && typeof global.Persist.pending === "function" && global.Persist.pending());
+  }
+
+  function pointerDragging() {
+    const select = global.DataBasedSelect;
+    if (select && typeof select.isDragging === "function" && select.isDragging()) return true;
+    const state = (global.DB && global.DB.state) || (global.Boards && global.Boards.api && global.Boards.api.state);
+    if (!state) return false;
+    return Boolean(state.dragged || state.drag);
   }
 
   function boardBody(b) {
@@ -179,6 +188,7 @@
   }
 
   function applyRemote(doc) {
+    if (pointerDragging()) return;
     if (!doc.boards.length) {
       const id = Math.random().toString(36).slice(2, 10);
       const who = (global.DataBasedAccess && global.DataBasedAccess.handle && global.DataBasedAccess.handle()) || "you";
@@ -281,7 +291,10 @@
         body,
         keepalive: true,
       })).then((res) => {
-        if (res && res.ok) lastPayload = body;
+        if (res && res.ok) {
+          lastPayload = body;
+          lastPutAt = Math.max(lastPutAt, docUpdatedAt(doc));
+        }
         return Boolean(res && res.ok);
       }).catch(() => false);
     }
@@ -293,7 +306,10 @@
       body,
       keepalive: reason === "hide" || reason === "unload",
     })).then((res) => {
-      if (res) lastPayload = body;
+      if (res) {
+        lastPayload = body;
+        lastPutAt = Math.max(lastPutAt, docUpdatedAt(doc));
+      }
       return Boolean(res);
     });
   }
@@ -301,15 +317,18 @@
   function pull() {
     if (!isAuthed()) return Promise.resolve(false);
     if (typing()) return Promise.resolve(false);
+    if (pointerDragging()) return Promise.resolve(false);
     return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers, credentials: "same-origin" })).then((res) => {
       if (!res) return false;
       return res.json().then((remote) => {
         if (!remote || !Array.isArray(remote.boards)) return false;
+        if (pointerDragging()) return false;
         const local = readDoc(false);
         const access = global.DataBasedAccess;
         const serverTruth = access && access.session && access.session.acl;
         const remoteAt = docUpdatedAt(remote);
-        const localAt = docUpdatedAt(local);
+        const localAt = Math.max(docUpdatedAt(local), lastPutAt);
+        if (localAt > remoteAt) return false;
         if (localDirty(local) && localAt >= remoteAt && !serverTruth) return false;
         if (serverTruth || remoteAt > localAt || (remote.boards.length && !(local && local.boards && local.boards.length))) {
           applyRemote(remote);
@@ -343,7 +362,7 @@
       if (reason === "interval") arm(delay);
       return Promise.resolve(false);
     }
-    if (reason === "interval" && (document.hidden || !boardOpen())) {
+    if (reason === "interval" && (document.hidden || !boardOpen() || pointerDragging())) {
       arm(delay);
       return Promise.resolve(false);
     }
@@ -367,7 +386,7 @@
   }
 
   function kick() {
-    if (!isAuthed() || applying) return;
+    if (!isAuthed() || applying || pointerDragging()) return;
     if (kickTimer) clearTimeout(kickTimer);
     kickTimer = setTimeout(() => {
       kickTimer = 0;
@@ -406,12 +425,18 @@
     window.addEventListener("beforeunload", onUnload);
   }
 
+  function noteLocal(doc) {
+    lastPutAt = Math.max(lastPutAt, docUpdatedAt(doc || readDoc(false)));
+  }
+
   global.DataBasedSync = {
     INTERVAL_MS,
     MAX_INTERVAL_MS,
     endpoint: ENDPOINT,
     isAuthed,
     kick,
+    noteLocal,
+    pointerDragging,
     push,
     pull,
   };
