@@ -146,4 +146,126 @@ assert.ok(
   replaced.some((url) => /^https:\/\/data-based-app\.vercel\.app\/(\?|#|$)/.test(url)),
   "mocked Clerk user on splash must location.replace to /"
 );
+
+const bounceJson = JSON.stringify({
+  flow: "sign_up",
+  message: "This external account already exists.",
+  oauth_provider: "oauth_google",
+  reason: "external_account_exists",
+  verification_id: "ver_3JcQle9jjWY7R2uRIwnoIBBFV6g",
+});
+const bounceSearch = "?clerk_status=" + encodeURIComponent(bounceJson);
+const bounceReplaced = [];
+const bounceLocation = {
+  href: "https://data-based-app.vercel.app/" + bounceSearch,
+  pathname: "/",
+  origin: "https://data-based-app.vercel.app",
+  hash: "",
+  search: bounceSearch,
+  replace(url) {
+    bounceReplaced.push(String(url));
+    this.href = String(url);
+    try {
+      const next = new URL(String(url), this.origin);
+      this.pathname = next.pathname;
+      this.search = next.search;
+      this.hash = next.hash;
+    } catch (_) {}
+  },
+};
+let transferred = false;
+let activated = "";
+function ClerkBounce(key, opts) {
+  this.frontendApi = (opts && opts.frontendApi) || "loyal-lionfish-3872.clerk.accounts.dev";
+  this.user = null;
+  this.session = null;
+  const signIn = {
+    authenticateWithRedirect: async () => {},
+    create: async function () {
+      transferred = true;
+      this.status = "complete";
+      this.createdSessionId = "sess_transferred";
+      return this;
+    },
+  };
+  this.client = {
+    sessions: [],
+    lastActiveSessionId: null,
+    signUp: {
+      isTransferable: true,
+      authenticateWithRedirect: async () => {},
+    },
+    signIn,
+  };
+}
+ClerkBounce.prototype.load = async function () { return this; };
+ClerkBounce.prototype.addListener = function () {};
+ClerkBounce.prototype.handleRedirectCallback = async function () {
+  const err = new Error("This external account already exists.");
+  err.errors = [{ code: "external_account_exists", message: "This external account already exists." }];
+  throw err;
+};
+ClerkBounce.prototype.setActive = async function (opts) {
+  activated = opts && opts.session;
+  this.session = { id: activated, getToken: async () => "tok" };
+  this.user = {
+    id: "user_operator",
+    primaryEmailAddress: { emailAddress: "marcode.chavez.jr@gmail.com" },
+  };
+  return this;
+};
+const bounceFetch = async (url) => {
+  if (String(url).includes("/api/config")) {
+    return fetchFn("/api/config");
+  }
+  if (String(url).includes("/api/access/me")) {
+    return {
+      ok: true,
+      json: async () => ({
+        email: "marcode.chavez.jr@gmail.com",
+        isSystem: true,
+        hasAppAccess: true,
+        verified: true,
+        clerk: true,
+        acl: true,
+      }),
+    };
+  }
+  return { ok: true, json: async () => ({}) };
+};
+const bounceSandbox = {
+  window: null,
+  document,
+  location: bounceLocation,
+  fetch: bounceFetch,
+  Promise,
+  Boolean,
+  String,
+  Array,
+  JSON,
+  URL,
+  Error,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  atob: (s) => Buffer.from(s, "base64").toString("binary"),
+  btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+  console,
+};
+bounceSandbox.window = bounceSandbox;
+bounceSandbox.global = bounceSandbox;
+bounceSandbox.Clerk = ClerkBounce;
+bounceSandbox.__clerk_frontend_api = "loyal-lionfish-3872.clerk.accounts.dev";
+bounceSandbox.__databasedClerkPreload = bounceFetch("/api/config").then((res) => res.json());
+vm.runInNewContext(accessSrc, bounceSandbox, { filename: "access.js" });
+await bounceSandbox.DataBasedAccess.ready();
+assert.equal(transferred, true, "external_account_exists must signIn.create({ transfer: true })");
+assert.equal(activated, "sess_transferred", "transfer must setActive the created session");
+assert.equal(
+  bounceReplaced.some((url) => url.includes("/splash")),
+  false,
+  "existing Google user must not bounce to /splash"
+);
 console.log("pass mocked Clerk user on /splash runs goApp to /");
+console.log("pass external_account_exists transfers to sign-in and stays on /");

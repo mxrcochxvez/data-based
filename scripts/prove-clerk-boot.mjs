@@ -13,6 +13,9 @@ const must = [
   ["starts first Google with client.signUp.authenticateWithRedirect", /signUp\.authenticateWithRedirect/],
   ["shows Opening Google while Clerk JS finishes", /Opening Google/],
   ["recovers external_account_not_found by transferring to sign-up", /external_account_not_found/],
+  ["transfers existing Google users with signIn.create({ transfer: true })", /signIn\.create\(\s*\{\s*transfer:\s*true/],
+  ["treats external_account_exists as a sign-in transfer", /external_account_exists/],
+  ["treats identifier_already_signed_in as an existing session", /identifier_already_signed_in/],
   ["passes transferable on handleRedirectCallback", /handleRedirectCallback\(\s*\{\s*transferable:\s*true/],
   ["explains Clerk Restricted invitations in Development", /Clerk Restricted will not create a user/],
   ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
@@ -58,6 +61,17 @@ const restrictedRe = /sign_up_restricted|not_allowed_to_sign_up|invitation_requi
 const sampleOk = missingRe.test(sample);
 console.log(sampleOk ? "pass" : "fail", "sample Google bounce JSON is treated as missing external account");
 if (!sampleOk) failed += 1;
+const existsSample = JSON.stringify({
+  flow: "sign_up",
+  message: "This external account already exists.",
+  oauth_provider: "oauth_google",
+  reason: "external_account_exists",
+  verification_id: "ver_3JcQle9jjWY7R2uRIwnoIBBFV6g",
+});
+const existsRe = /external_account_exists|This external account already exists/i;
+const existsOk = existsRe.test(existsSample) && /signIn\.create\(\s*\{\s*transfer:\s*true/.test(src);
+console.log(existsOk ? "pass" : "fail", "existing Google account bounce transfers to sign-in");
+if (!existsOk) failed += 1;
 const restrictedSample = "sign_up_restricted: Sign-ups are restricted";
 const restrictedOk = restrictedRe.test(restrictedSample);
 console.log(restrictedOk ? "pass" : "fail", "Restricted sign-up errors map to invite copy");

@@ -23,6 +23,8 @@ const must = [
   [access, "Clerk session leaves splash before server verify", /if \(!onAppPage\(\)\)/],
   [access, "verified session navigates to /", /function goApp\(/],
   [access, "signed-in sessions are not bounced to splash", /if \(clerkSessionPresent\(\)\) return false;/],
+  [access, "existing Google users transfer to sign-in", /function transferToSignIn\(/],
+  [access, "Request access still posts the KV waitlist", /fetch\("\/api\/access\/waitlist"/],
   [vercel, "rewrites /splash to splash.html", /"source":\s*"\/splash"[\s\S]*"destination":\s*"\/splash\.html"/],
   [vercel, "aliases /app to the canvas at /", /"source":\s*"\/app"[\s\S]*"destination":\s*"\/index\.html"/],
 ];
