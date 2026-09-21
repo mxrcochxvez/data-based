@@ -24,15 +24,16 @@
   <meta name="twitter:image" content="/og.png">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="css/brand.css">
+  <link rel="stylesheet" href="css/splash.css">
   <link rel="stylesheet" href="css/menu.css">
 </head>
-<body class="is-gated">
+<body class="is-gated is-splash">
   <!--
-    THESIS: The board is the product. Chrome floats on the canvas instead of a dark rail boxing a cream homework page.
-    OWN-WORLD: Cool gray field, 20px dot grid, white instrument islands, ink #111, selection blue only on the live object.
-    STORY: An engineer places a vendor element and edits it in that language.
-    FIRST VIEWPORT: Full-bleed board. Top-left wordmark island. Left floating tools. Empty HUD is fixed in the viewport.
-    FORM: Canon FigJam / Whimsical / Linear craft. User named the bar. Seed skipped for the standing exit.
+    THESIS: Logged-out visitors meet the paper board itself — cream field, hairline frame, schema cards — not a Sign in wall and not a purple SaaS blob.
+    OWN-WORLD: Cool gray #e6e6e3 dots on white page, ink #111, IBM Plex Condensed wordmark, 1px #d2d2cc rules, white card islands.
+    STORY: Request access with email (Clerk waitlist). Marco enables the email in Clerk. Then Sign in with Google. The board is the product.
+    FIRST VIEWPORT: Wordmark left (uncropped), Sign in with Google right. “Collaborative architecture boards.” stacked Request access. Framed shared-board preview.
+    FORM: Pinned FigJam / Figma paper studio. Seed skipped — the brief named the world.
     FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
   -->
   <div class="board" id="scroller" role="main" aria-label="Board">
@@ -46,7 +47,8 @@
 
   <aside class="hud-empty" id="empty">
     <h1>Place a table on the board.</h1>
-    <p>Start with a table. The + adds a next-layer card. Drag a port onto another card to share a module — many tables can feed one repo. Notes stay put.</p>
+    <p class="hud-copy">Start with a table. The + adds a next-layer card. Drag a port onto another card to share a module — many tables can feed one repo. Notes stay put.</p>
+    <p class="hud-copy-phone">Open the marketplace to place a table. Long-press a card for edit, duplicate, or delete.</p>
     <button type="button" class="btn" id="empty-open" aria-haspopup="dialog" aria-controls="market" aria-expanded="false">Open marketplace</button>
   </aside>
 
@@ -65,14 +67,24 @@
     </a>
     <span class="rule" aria-hidden="true"></span>
     <nav class="brand-nav" aria-label="Workspace">
-      <a href="#/boards" id="board-name">Board</a>
-      <a class="ghost-link" href="#/boards">Boards</a>
-      <a class="invite" href="#/invite" id="invite-link">Invite to board</a>
-      <a class="ghost-link" href="#/invite" id="mcp-link">MCP</a>
-      <a class="ghost-link" href="#/people" id="people-link" hidden>People</a>
-      <button type="button" class="ghost-link" id="export-open" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export<span class="export-rest"> agent prompt</span></button>
-      <span class="who-chip" id="who-label" hidden></span>
-      <button type="button" class="ghost-link" id="sign-out" hidden>Sign out</button>
+      <button type="button" class="chrome-board" id="board-switch" aria-haspopup="menu" aria-expanded="false" aria-controls="board-switch-menu">
+        <span class="chrome-board-name" id="board-name">Board</span>
+        <svg class="chrome-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <a class="chrome-share" href="#/invite" id="invite-link" title="Invite people to this board">Share</a>
+      <button type="button" class="chrome-more" id="chrome-more" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="chrome-menu">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>
+      </button>
+      <div class="chrome-pop" id="board-switch-menu" role="menu" aria-label="Boards" hidden></div>
+      <div class="chrome-pop" id="chrome-menu" role="menu" aria-label="Workspace" hidden>
+        <a class="chrome-pop-item is-phone-share" href="#/invite" id="invite-link-phone" role="menuitem">Share board</a>
+        <a class="chrome-pop-item" href="#/invite" id="mcp-link" role="menuitem">MCP key</a>
+        <button type="button" class="chrome-pop-item" id="export-open" role="menuitem" aria-haspopup="dialog" aria-controls="export" aria-expanded="false">Export agent prompt</button>
+        <a class="chrome-pop-item" href="#/people" id="people-link" role="menuitem" hidden>People</a>
+        <div class="chrome-pop-rule" role="separator"></div>
+        <span class="who-chip" id="who-label" hidden></span>
+        <button type="button" class="chrome-pop-item is-danger" id="sign-out" role="menuitem" hidden>Sign out</button>
+      </div>
     </nav>
   </header>
 
@@ -157,7 +169,7 @@
     <div class="sheet">
       <a href="#/" class="back">Back to board</a>
       <h1 id="people-title">People</h1>
-      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Board invites are email-only and do not create a Clerk account.</p>
+      <p class="lead">Invite into the product (app access). This grants our ACL and sends a Clerk invitation so they can Sign in with Google. Request access on the homepage only adds a Clerk waitlist entry. Board invites are email-only and do not create a Clerk account.</p>
       <form class="create" id="app-invite-form">
         <label class="sr-only" for="app-invite-email">Email</label>
         <input type="email" id="app-invite-email" name="email" placeholder="email" required autocomplete="off">
@@ -172,12 +184,74 @@
     </div>
   </section>
 
-  <section class="screen gate-screen" id="screen-who" hidden role="main" aria-labelledby="who-title">
-    <div class="sheet">
-      <h1 id="who-title">Sign in</h1>
-      <p class="lead">data-based is invite-only. Sign in with Google using the email you were invited with. There is no public signup.</p>
-      <button type="button" class="btn" id="google-signin">Sign in with Google</button>
-      <p class="parse-err" id="who-err" hidden role="alert"></p>
+  <section class="screen gate-screen splash" id="screen-splash" role="main" aria-labelledby="splash-title">
+    <header class="splash-bar">
+      <a class="wordmark splash-wordmark" href="/" aria-label="Data Based">
+        <svg class="wordmark-mark" viewBox="-1 -1 16 16" aria-hidden="true">
+          <rect class="grid" x="0.5" y="0.5" width="13" height="13"/>
+          <path class="grid" d="M7 0.5v13M0.5 7h13"/>
+          <rect class="cell is-on" x="1" y="7.5" width="12" height="5.5"/>
+          <rect class="cell is-next" x="1" y="1" width="12" height="5.5"/>
+        </svg>
+        <span class="wordmark-type">
+          <span class="wordmark-data">DATA</span>
+          <span class="wordmark-based">BASED</span>
+        </span>
+      </a>
+      <button type="button" class="splash-google" id="google-signin">Sign in with Google</button>
+    </header>
+
+    <div class="splash-shell">
+      <div class="splash-copy">
+        <h1 id="splash-title">Collaborative architecture boards.</h1>
+        <p class="splash-lead">Invite-only early access. One shared canvas for schema, API, and effect cards — edited in Prisma, Drizzle, GraphQL, or SQL, not a sticky note pretending to be a table.</p>
+        <form class="splash-form" id="waitlist-form">
+          <label class="sr-only" for="waitlist-email">Work email</label>
+          <input type="email" id="waitlist-email" name="email" placeholder="Work email" required autocomplete="email" inputmode="email" aria-describedby="who-err waitlist-ok">
+          <button type="submit" class="btn" id="waitlist-submit">Request access</button>
+        </form>
+        <p class="splash-ok" id="waitlist-ok" hidden role="status"></p>
+        <p class="parse-err" id="who-err" hidden role="alert"></p>
+        <p class="splash-note">Request access puts you on the Clerk waitlist. Marco enables that email in Clerk; then Sign in with Google. Sharing a board is not product access.</p>
+      </div>
+
+      <figure class="splash-stage" aria-hidden="true">
+        <div class="splash-canvas">
+          <div class="splash-world">
+            <svg class="splash-wires" viewBox="0 0 640 400" aria-hidden="true">
+              <path d="M244 118 C 310 118, 310 208, 368 208"/>
+              <path d="M244 232 C 300 232, 300 208, 368 208"/>
+            </svg>
+            <div class="splash-boardchip">billing</div>
+            <article class="card splash-card" style="left:48px;top:52px;width:196px;min-height:0">
+              <div class="card-bar"><span class="card-kind">Prisma</span><span class="card-title">User</span></div>
+              <div class="card-body">
+                <ul>
+                  <li><code>id</code> String</li>
+                  <li><code>email</code> String</li>
+                  <li><code>orgId</code> String</li>
+                </ul>
+              </div>
+            </article>
+            <article class="card splash-card" style="left:48px;top:196px;width:196px;min-height:0">
+              <div class="card-bar"><span class="card-kind">SQL</span><span class="card-title">Org</span></div>
+              <div class="card-body">
+                <ul>
+                  <li><code>id</code> uuid</li>
+                  <li><code>name</code> text</li>
+                </ul>
+              </div>
+            </article>
+            <article class="card splash-card is-sel" style="left:368px;top:148px;width:220px;min-height:0">
+              <div class="card-bar"><span class="card-kind">GraphQL</span><span class="card-title">schema</span></div>
+              <div class="card-body">
+                <code>type User { id: ID! }</code>
+              </div>
+            </article>
+          </div>
+        </div>
+        <figcaption>Studio preview — synthetic cards, not a live board.</figcaption>
+      </figure>
     </div>
   </section>
 

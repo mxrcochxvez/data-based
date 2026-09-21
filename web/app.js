@@ -260,8 +260,9 @@ function hydrateBoard(b) {
 function flushBoard() {
   const b = currentBoard();
   if (!b) return;
-  if (window.Persist && typeof window.Persist.layoutCard === "function") {
-    state.cards.forEach((c) => window.Persist.layoutCard(c));
+  const Persist = window.Persist;
+  if (Persist && typeof Persist.layoutCard === "function") {
+    state.cards.forEach((c) => Persist.layoutCard(c));
   }
   b.cards = state.cards;
   b.nextId = state.nextId;
@@ -270,11 +271,19 @@ function flushBoard() {
   else if (state.camera) b.camera = { pan: { x: state.camera.pan.x, y: state.camera.pan.y }, zoom: state.camera.zoom };
   if (flow() && typeof flow().flushToBoard === "function") flow().flushToBoard(b);
   else b.edges = Array.isArray(state.edges) ? state.edges : [];
+  if (Persist && typeof Persist.markDirty === "function") {
+    if (Persist.markDirty(b)) store.updatedAt = b.updatedAt;
+  }
 }
 
 function persistDoc() {
   flushBoard();
-  store.updatedAt = Date.now();
+  let maxAt = Number(store.updatedAt) || 0;
+  for (let i = 0; i < store.boards.length; i++) {
+    const t = Number(store.boards[i] && store.boards[i].updatedAt) || 0;
+    if (t > maxAt) maxAt = t;
+  }
+  store.updatedAt = maxAt;
   const doc = { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
   return window.Persist && typeof window.Persist.snapshotDoc === "function"
     ? window.Persist.snapshotDoc(doc)
@@ -1852,6 +1861,10 @@ function renderBoardChrome() {
   const b = currentBoard();
   $("board-name").textContent = b.name;
   $("invite-link").href = "#/invite/" + b.id;
+  const phoneShare = $("invite-link-phone");
+  if (phoneShare) phoneShare.href = "#/invite/" + b.id;
+  const mcp = $("mcp-link");
+  if (mcp) mcp.href = "#/invite/" + b.id;
 }
 
 function renderBoardList() {

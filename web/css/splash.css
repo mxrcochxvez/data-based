@@ -1,0 +1,279 @@
+/* Splash-only. Do not restyle #chrome-brand / in-app menu. */
+
+.splash {
+  background: #f7f7f4;
+  color: var(--ink);
+  overflow: auto;
+}
+
+.splash-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 64px;
+  padding: 12px 28px;
+  padding-left: max(28px, env(safe-area-inset-left));
+  padding-right: max(28px, env(safe-area-inset-right));
+  padding-top: max(12px, env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  overflow: visible;
+}
+
+.splash-bar .wordmark,
+.splash-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: auto;
+  min-height: 28px;
+  margin-right: 0;
+  padding: 4px 2px;
+  overflow: visible;
+  flex: 0 0 auto;
+  color: #111;
+}
+
+.splash-bar .wordmark-mark {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.splash-bar .wordmark-mark .grid {
+  vector-effect: none;
+  stroke-width: 0.9;
+}
+
+.splash-bar .wordmark-type {
+  display: inline-flex;
+  overflow: visible;
+  line-height: 1.15;
+}
+
+.splash-bar .wordmark-data,
+.splash-bar .wordmark-based {
+  color: #111;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.splash-google {
+  border: 0;
+  background: transparent;
+  padding: 8px 2px;
+  font: 13px/1 var(--sans);
+  font-weight: 550;
+  color: var(--ink);
+  cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.splash-google:hover { color: var(--mute); }
+.splash-google:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 3px;
+}
+
+.splash-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
+  gap: 48px 56px;
+  align-items: center;
+  width: min(1120px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 80px 0 96px;
+}
+
+.splash-copy { min-width: 0; }
+
+.splash h1 {
+  font-size: clamp(36px, 4.6vw, 56px);
+  font-weight: 550;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  max-width: 12ch;
+  margin: 0 0 16px;
+}
+
+.splash-lead {
+  color: var(--mute);
+  font-size: 17px;
+  line-height: 1.45;
+  max-width: 38ch;
+  margin: 0 0 32px;
+}
+
+.splash-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  max-width: 22rem;
+  margin: 0 0 12px;
+}
+
+.splash-form input[type="email"] {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #c8c8c2;
+  border-radius: 7px;
+  background: #fff;
+  font: 15px/1.3 var(--sans);
+  color: var(--ink);
+}
+.splash-form input[type="email"]::placeholder { color: #8a8a84; }
+.splash-form input[type="email"]:focus {
+  outline: 2px solid var(--sel);
+  outline-offset: 1px;
+}
+
+.splash-form .btn {
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.splash-form .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.splash-ok {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 46ch;
+  margin: 0 0 10px;
+}
+
+.splash .parse-err {
+  max-width: 46ch;
+  margin: 0 0 10px;
+}
+
+.splash-note {
+  color: var(--mute);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 44ch;
+  margin: 8px 0 0;
+}
+
+.splash-stage {
+  margin: 0;
+  min-width: 0;
+}
+
+.splash-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 640 / 400;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background-color: var(--field);
+  background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+  background-position: 10px 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(17, 17, 17, 0.04), 0 18px 40px rgba(17, 17, 17, 0.08);
+}
+
+.splash-world {
+  position: absolute;
+  inset: 0;
+}
+
+.splash-boardchip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  padding: 5px 9px;
+  border: 1px solid #c8c8c2;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 0 rgba(17, 17, 17, 0.04), 0 6px 16px rgba(17, 17, 17, 0.08);
+}
+
+.splash-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.splash-wires path {
+  fill: none;
+  stroke: #111;
+  stroke-width: 1.6;
+}
+
+.splash .card.splash-card {
+  position: absolute;
+  pointer-events: none;
+  min-width: 0;
+  min-height: 0;
+}
+.splash-card-user { left: 7.5%; top: 16%; width: 30%; }
+.splash-card-org { left: 7.5%; top: 54%; width: 30%; }
+.splash-card-gql { left: 56%; top: 38%; width: 34%; }
+
+.splash-stage figcaption {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--mute);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .splash-card {
+    animation: splash-settle 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .splash-card:nth-of-type(1) { animation-delay: 40ms; }
+  .splash-card:nth-of-type(2) { animation-delay: 90ms; }
+  .splash-card:nth-of-type(3) { animation-delay: 140ms; }
+}
+
+@keyframes splash-settle {
+  from {
+    opacity: 0.35;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .splash-bar {
+    min-height: 60px;
+    padding: 10px 16px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .splash-bar .wordmark-type { display: inline-flex; }
+  .splash-google {
+    min-height: 44px;
+    padding: 12px 4px;
+  }
+  .splash-shell {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    width: min(1120px, calc(100% - 32px));
+    padding: 36px 0 56px;
+  }
+  .splash h1 {
+    max-width: 11ch;
+    font-size: 36px;
+  }
+  .splash-form { max-width: none; }
+}

@@ -16,14 +16,14 @@ Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Default port is `8765` (`
 
 ### Access control (Clerk + Google)
 
-Sign-in is **Clerk**, **Sign in with Google** only. There is no public self-signup and no homemade password table.
+Sign-in is **Clerk**, **Sign in with Google** only. Logged-out `/` is a marketing splash with **Request access**. There is no public self-signup and no homemade waitlist table.
 
 **Env (names only — never commit values)**
 
 | Name | Where | Role |
 | --- | --- | --- |
 | `CLERK_PUBLISHABLE_KEY` | Client via `GET /api/config` | Clerk JS. Also accepted: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` |
-| `CLERK_SECRET_KEY` | Server only | Verify session JWTs; create Clerk invitations |
+| `CLERK_SECRET_KEY` | Server only | Verify session JWTs; Clerk waitlist + invitations |
 | `SYSTEM_USER_EMAIL` | Server | Clerk email of the operator. Alias: `DATABSED_SYSTEM_EMAIL` |
 
 Example operator: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
@@ -34,12 +34,30 @@ After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>
 
 1. Create (or reuse) a Clerk application.
 2. **Social connections → Google**: enable. Add your Google OAuth client ID/secret in Clerk (not in this repo).
-3. **Restrictions**: turn **Allow new users to sign up** off, or set the app to **Restricted** and use **Invitations** so only invited emails can join.
-4. Disable email/password if you want Google-only.
-5. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL.
-6. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_…` from an old Next experiment). Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only.
-7. Invite `SYSTEM_USER_EMAIL` in Clerk (Users → Invitations) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
-8. Redeploy after adding env vars.
+3. **Configure → Restrictions** (or **User & authentication → Restrictions**): set sign-up to **Restricted** so only invited emails can join. Keep public sign-up off.
+4. **Configure → Waitlist**: turn **Waitlist** on so Request access can call `POST /waitlist_entries`.
+5. Disable email/password if you want Google-only.
+6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`).
+7. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only.
+8. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
+9. Redeploy after adding env vars.
+
+**How Marco approves someone (Clerk)**
+
+Waitlist (what Request access uses when Waitlist is on):
+
+1. Open [dashboard.clerk.com](https://dashboard.clerk.com) and select the application that matches this site’s publishable key (Development if `pk_test_`, Production if `pk_live_`).
+2. Sidebar **Users** → **Waitlist**.
+3. Find the email → **⋯** or the row action → **Invite**.
+4. They get a Clerk invitation. They open the site and **Sign in with Google** with that same Google email.
+
+If Waitlist is off, Request access queues **Users → Invitations** with no email sent. Approve by:
+
+1. **Users → Invitations**.
+2. **Invite user** (or open the queued invitation) → enter the Google email if needed → send / enable.
+3. They **Sign in with Google**.
+
+Then our ACL: `SYSTEM_USER_EMAIL` is the operator. Everyone else still needs **Invite to app** on `#/people` (grants the store ACL and sends a notifying Clerk invitation). A Clerk invitation alone does not replace that grant.
 
 **How Google invite-only meets our ACL**
 
@@ -155,6 +173,7 @@ Connect the GitHub repo in the Vercel dashboard (root directory = repo root, fra
 | --- | --- |
 | `/api/sync` | `api/sync.mjs` |
 | `/api/config` | `api/config.mjs` (Clerk publishable key only) |
+| `/api/access`, `/api/access/*` | `api/access.mjs` (session, invites, public waitlist POST) |
 | `/mcp`, `/sse`, `/mcp/*`, `/api/mcp/*` | `api/mcp.mjs` |
 
 ### Persistence (required on Vercel)

@@ -5,6 +5,7 @@ import {
   clerkConfigured,
   clerkIdentityFromRequest,
   inviteClerkEmail,
+  requestClerkAccess,
 } from "./clerk.mjs";
 
 export const CONTACT_FALLBACK = "marcode.chavez.jr@gmail.com";
@@ -246,6 +247,34 @@ export async function handleAccess(req, res, send, dataDir, bodyText) {
 
   const url = new URL(req.url || "/", "http://127.0.0.1");
   const path = accessPath(req);
+  const isWaitlist = path === "/api/access/waitlist" || /\/waitlist$/.test(path);
+
+  if (isWaitlist) {
+    if (req.method !== "POST") {
+      send(res, 405, { error: "method not allowed" });
+      return;
+    }
+    let body = {};
+    try {
+      body = bodyText ? JSON.parse(bodyText) : {};
+    } catch (_) {
+      send(res, 400, { error: "invalid json", message: "The request body was not JSON." });
+      return;
+    }
+    const email = body.email || body.handle;
+    if (!looksLikeEmail(email)) {
+      send(res, 400, { error: "invalid_email", message: "Enter a valid email." });
+      return;
+    }
+    const result = await requestClerkAccess(email);
+    const status = result.ok ? 200
+      : result.error === "invalid_email" ? 400
+      : result.error === "clerk_unconfigured" || result.error === "clerk_unreachable" || result.error === "clerk_auth" ? 503
+      : 400;
+    send(res, status, result);
+    return;
+  }
+
   const ident = await identityDetailsFromReq(req);
   const handle = ident.email || "";
   const doc = await readAccess(dataDir);

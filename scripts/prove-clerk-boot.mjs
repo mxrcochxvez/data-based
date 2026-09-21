@@ -14,6 +14,7 @@ const must = [
   ["explains Clerk Restricted invitations in Development", /Clerk Restricted will not create a user/],
   ["keeps returning-user sign-in OAuth as a fallback", /signIn\.authenticateWithRedirect/],
   ["loads Clerk JS from the instance frontend API host", /clerkScriptUrl/],
+  ["shows splash instead of a Sign in wall", /screen-splash/],
   ["requires a server-verified email before the invite gate", /if \(!session\.verified\)/],
   ["sends Clerk getToken as Authorization Bearer", /Authorization\s*=\s*["']Bearer /],
   ["asks Clerk getToken with skipCache", /getToken\(\s*\{\s*skipCache:\s*true/],
