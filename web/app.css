@@ -441,6 +441,13 @@ textarea.note-text {
 .offer-mark.is-prisma { background: #0c344b; border-color: #0c344b; }
 .offer-mark.is-drizzle { background: #c5f74f; border-color: #b6e247; }
 .offer-mark.is-gql { background: #e10098; border-color: #e10098; }
+.offer-mark.is-kysely { background: #121212; border-color: #121212; }
+.offer-mark.is-convex { background: #ee342f; border-color: #ee342f; }
+.offer-mark.is-zod { background: #408aff; border-color: #408aff; }
+.offer-mark.is-proto { background: #30638e; border-color: #30638e; }
+.offer-mark.is-trpc { background: #398ccb; border-color: #398ccb; }
+.offer-mark.is-hono { background: #ff5b11; border-color: #e04f0e; }
+.offer-mark.is-openapi { background: #6ba539; border-color: #5e922f; }
 .offer-name {
   font-size: 10px;
   font-weight: 650;
