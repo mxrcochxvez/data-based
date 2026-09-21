@@ -152,9 +152,9 @@ System sans. Mono only inside CodePane. No IBM Plex. No display face.
 
 ## Layout
 
-20px dot grid. Chrome is `position: fixed`. Empty HUD is viewport-fixed. The board scroller is the only world pan.
+20px dot grid. Chrome is `position: fixed`. Empty HUD is viewport-fixed. The board camera pans and zooms the world with no scroll edge. Pinch on a touch screen zooms the board. Re-center frames the cards.
 
-**The One Scroll Rule.** A modal has one scrolling body. Head and foot stay put. The page behind does not scroll while the modal is open (`body.is-modal`).
+**The One Scroll Rule.** A modal has one scrolling body. Head and foot stay put. The page behind does not scroll while the modal is open (`body.is-modal`). The board itself does not use overflow scroll.
 
 ## Elevation & Depth
 
