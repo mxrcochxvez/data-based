@@ -18,6 +18,17 @@
     return "you";
   }
 
+  function sameHandle(a, b) {
+    return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+  }
+
+  function canManage(b) {
+    const access = global.DataBasedAccess;
+    if (access && typeof access.isSystem === "function" && access.isSystem()) return true;
+    const who = ownerHandle();
+    return Boolean(b && Array.isArray(b.grants) && b.grants.some((g) => g.role === "owner" && sameHandle(g.handle, who)));
+  }
+
   function emptyBoard(name) {
     return {
       id: uid(),
@@ -56,7 +67,8 @@
       }
     }
     const b = emptyBoard("Board");
-    return { boards: [b], currentId: b.id, updatedAt: Date.now() };
+    b.updatedAt = 0;
+    return { boards: [b], currentId: b.id, updatedAt: 0 };
   }
 
   const store = loadStore();
@@ -164,13 +176,21 @@
   function renderBoardList() {
     const list = $("board-list");
     if (!list) return;
-    list.innerHTML = store.boards.map((b) => `
+    list.innerHTML = store.boards.map((b) => {
+      const manage = canManage(b);
+      const actions = manage
+        ? `<button type="button" class="text-btn" data-rename="${b.id}">Rename</button>` +
+          `<button type="button" class="text-btn is-danger" data-delete="${b.id}">Delete</button>`
+        : `<span class="role"></span><span class="role"></span>`;
+      return `
       <li>
         <a href="#/" data-open="${b.id}">${esc(b.name)}</a>
         <span class="role">${(b.cards || []).length} cards</span>
         <a href="#/invite/${b.id}">Invite to board</a>
+        ${actions}
       </li>
-    `).join("");
+    `;
+    }).join("");
   }
 
   function renderGrants(id) {
@@ -306,6 +326,33 @@
     routing = false;
   }
 
+  function renameBoard(b) {
+    if (!b || !canManage(b)) return;
+    const next = window.prompt("Board name", b.name || "Board");
+    if (next == null) return;
+    const name = String(next).trim();
+    if (!name || name === b.name) return;
+    b.name = name;
+    b.updatedAt = Date.now();
+    saveNow();
+    renderBoardChrome();
+    renderBoardList();
+  }
+
+  function deleteBoard(b) {
+    if (!b || !canManage(b)) return;
+    if (!window.confirm("Delete \"" + (b.name || "Board") + "\"? Cards on it are removed.")) return;
+    flushBoard();
+    store.boards = store.boards.filter((x) => x.id !== b.id);
+    if (!store.boards.length) store.boards.push(emptyBoard("Board"));
+    const next = store.boards.find((x) => x.id === store.currentId) || store.boards[0];
+    hydrateBoard(next);
+    saveNow();
+    if (api && api.renderCards) api.renderCards();
+    renderBoardChrome();
+    renderBoardList();
+  }
+
   function openBoard(b) {
     if (!b) return;
     flushBoard();
@@ -356,6 +403,18 @@
     if (list) {
       list.addEventListener("click", (ev) => {
         const open = ev.target.closest("[data-open]");
+        const rename = ev.target.closest("[data-rename]");
+        const kill = ev.target.closest("[data-delete]");
+        if (rename) {
+          ev.preventDefault();
+          renameBoard(store.boards.find((x) => x.id === rename.dataset.rename));
+          return;
+        }
+        if (kill) {
+          ev.preventDefault();
+          deleteBoard(store.boards.find((x) => x.id === kill.dataset.delete));
+          return;
+        }
         if (!open) return;
         ev.preventDefault();
         openBoard(store.boards.find((x) => x.id === open.dataset.open));
@@ -551,6 +610,9 @@
     flush: flushBoard,
     open: openBoard,
     chrome: renderBoardChrome,
+    canManage,
+    rename: renameBoard,
+    remove: deleteBoard,
     route,
   };
 })(window);

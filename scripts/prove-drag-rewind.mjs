@@ -15,6 +15,7 @@ const must = [
   [syncJs, "skips applyRemote while a pointer-drag is live", /function applyRemote\(doc\) \{\s*if \(pointerDragging\(\)\) return;/],
   [syncJs, "does not let an older GET beat a local or PUT stamp", /const localAt = Math\.max\(docUpdatedAt\(local\), lastPutAt\)/],
   [syncJs, "refuses remote when local updatedAt is newer", /if \(localAt > remoteAt\) return false/],
+  [syncJs, "virgin empty Board yields to remote boards", /isVirginDoc\(local\) && remote\.boards\.length/],
   [syncJs, "records lastPutAt after a successful PUT", /lastPutAt = Math\.max\(lastPutAt, docUpdatedAt\(doc\)\)/],
   [selectJs, "exposes isDragging during move/resize", /function isDragging\(\)/],
   [selectJs, "flushes persist on drop before the next GET", /persist\(\{\s*flush:\s*true\s*\}\)/],

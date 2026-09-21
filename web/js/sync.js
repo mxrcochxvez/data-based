@@ -254,8 +254,20 @@
     }).catch(() => null);
   }
 
+  function isVirginDoc(doc) {
+    if (!doc || !Array.isArray(doc.boards) || doc.boards.length !== 1) return !doc || !Array.isArray(doc.boards) || !doc.boards.length;
+    const b = doc.boards[0];
+    if (!b) return true;
+    const emptyCards = !Array.isArray(b.cards) || b.cards.length === 0;
+    const defaultName = !b.name || b.name === "Board";
+    const handle = b.grants && b.grants[0] && b.grants[0].handle;
+    const defaultOwner = !handle || handle === "you";
+    return emptyCards && defaultName && defaultOwner;
+  }
+
   function localDirty(local) {
     if (pendingPersist()) return true;
+    if (isVirginDoc(local) && !lastPayload) return false;
     if (!lastPayload) return Boolean(local && Array.isArray(local.boards) && local.boards.length);
     const prev = parse(lastPayload);
     return contentKey(local) !== contentKey(prev);
@@ -322,6 +334,10 @@
         const serverTruth = access && access.session && access.session.acl;
         const remoteAt = docUpdatedAt(remote);
         const localAt = Math.max(docUpdatedAt(local), lastPutAt);
+        if (isVirginDoc(local) && remote.boards.length) {
+          applyRemote(remote);
+          return true;
+        }
         if (localAt > remoteAt) return false;
         if (localDirty(local) && localAt >= remoteAt && !serverTruth) return false;
         if (serverTruth || remoteAt > localAt || (remote.boards.length && !(local && local.boards && local.boards.length))) {
@@ -406,7 +422,7 @@
   function boot() {
     if (!isAuthed()) return;
     pull().then((applied) => {
-      if (!applied) push("boot");
+      if (!applied && !isVirginDoc(readDoc(false))) push("boot");
     }).then(() => {
       arm(INTERVAL_MS);
     });

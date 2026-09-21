@@ -202,7 +202,8 @@ function loadStore() {
     return raw;
   }
   const b = emptyBoard("Board");
-  return { boards: [b], currentId: b.id, updatedAt: Date.now() };
+  b.updatedAt = 0;
+  return { boards: [b], currentId: b.id, updatedAt: 0 };
 }
 
 const store = (window.Boards && window.Boards.store) || loadStore();
