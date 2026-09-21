@@ -206,8 +206,6 @@
     addItem("Paste", "paste", { disabled: !clip, kbd: "⌘V" });
     addItem("Select all", "select-all", { kbd: "⌘A" });
     addItem("Reset zoom", "reset-zoom", { kbd: "0" });
-    addRule();
-    addItem("Export agent prompt", "export");
   }
 
   function fillCard(card) {
@@ -652,9 +650,94 @@
 
   root.DataBasedMenu = { attach, close: closeMenu, boot };
 
+  function closePops() {
+    ["chrome-menu", "board-switch-menu"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
+    });
+    const more = document.getElementById("chrome-more");
+    const sw = document.getElementById("board-switch");
+    if (more) more.setAttribute("aria-expanded", "false");
+    if (sw) sw.setAttribute("aria-expanded", "false");
+  }
+
+  function fillBoardSwitch() {
+    const menu = document.getElementById("board-switch-menu");
+    const api = root.Boards;
+    if (!menu || !api || !api.store) return;
+    const current = api.current ? api.current() : null;
+    menu.innerHTML = "";
+    api.store.boards.forEach((b) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chrome-pop-item";
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = b.name;
+      if (current && String(b.id) === String(current.id)) btn.setAttribute("aria-current", "true");
+      btn.addEventListener("click", () => {
+        closePops();
+        if (typeof api.open === "function") api.open(b);
+        location.hash = "#/";
+      });
+      menu.appendChild(btn);
+    });
+    const hr = document.createElement("div");
+    hr.className = "chrome-pop-rule";
+    hr.setAttribute("role", "separator");
+    menu.appendChild(hr);
+    const all = document.createElement("a");
+    all.className = "chrome-pop-item";
+    all.href = "#/boards";
+    all.setAttribute("role", "menuitem");
+    all.textContent = "All boards";
+    all.addEventListener("click", closePops);
+    menu.appendChild(all);
+  }
+
+  function bindChrome() {
+    const more = document.getElementById("chrome-more");
+    const moreMenu = document.getElementById("chrome-menu");
+    const sw = document.getElementById("board-switch");
+    const swMenu = document.getElementById("board-switch-menu");
+    if (!more || !moreMenu || !sw || !swMenu) return;
+    more.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const open = moreMenu.hidden;
+      closePops();
+      if (open) {
+        moreMenu.hidden = false;
+        more.setAttribute("aria-expanded", "true");
+      }
+    });
+    sw.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const open = swMenu.hidden;
+      closePops();
+      if (open) {
+        fillBoardSwitch();
+        swMenu.hidden = false;
+        sw.setAttribute("aria-expanded", "true");
+      }
+    });
+    moreMenu.addEventListener("click", (ev) => {
+      if (ev.target.closest("[role='menuitem']")) closePops();
+    });
+    document.addEventListener("pointerdown", (ev) => {
+      if (ev.target.closest("#chrome-brand")) return;
+      closePops();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") closePops();
+    });
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 0));
+    document.addEventListener("DOMContentLoaded", () => {
+      setTimeout(boot, 0);
+      bindChrome();
+    });
   } else {
     setTimeout(boot, 0);
+    bindChrome();
   }
 })(window);
