@@ -281,6 +281,68 @@ assert.equal(
   "OAuth callback must stay on the app origin"
 );
 
+let coldTransferred = false;
+const coldLoc = {
+  href: "https://data-based-app.vercel.app/splash",
+  pathname: "/splash",
+  origin: "https://data-based-app.vercel.app",
+  hash: "",
+  search: "",
+  replace() {},
+};
+function ClerkCold() {
+  this.frontendApi = "loyal-lionfish-3872.clerk.accounts.dev";
+  this.user = null;
+  this.session = null;
+  this.client = {
+    sessions: [],
+    lastActiveSessionId: null,
+    signUp: { isTransferable: false, authenticateWithRedirect: async () => {} },
+    signIn: {
+      id: "sia_3JcSDgqKyOQf50UcIw9tKbq9jIH",
+      authenticateWithRedirect: async () => {},
+      create: async function (opts) {
+        if (opts && opts.transfer) coldTransferred = true;
+        const err = new Error("There is no account to transfer");
+        err.reason = "There is no account to transfer";
+        throw err;
+      },
+    },
+  };
+}
+ClerkCold.prototype.load = async function () { return this; };
+ClerkCold.prototype.addListener = function () {};
+ClerkCold.prototype.setActive = async function () { return this; };
+ClerkCold.prototype.handleRedirectCallback = async function () { return this; };
+const coldSandbox = {
+  window: null,
+  document,
+  location: coldLoc,
+  fetch: fetchFn,
+  Promise,
+  Boolean,
+  String,
+  Array,
+  JSON,
+  URL,
+  Error,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  atob: (s) => Buffer.from(s, "base64").toString("binary"),
+  btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+  console,
+};
+coldSandbox.window = coldSandbox;
+coldSandbox.global = coldSandbox;
+coldSandbox.Clerk = ClerkCold;
+coldSandbox.__clerk_frontend_api = "loyal-lionfish-3872.clerk.accounts.dev";
+coldSandbox.__databasedClerkPreload = fetchFn("/api/config").then((res) => res.json());
+vm.runInNewContext(accessSrc, coldSandbox, { filename: "access.js" });
+await coldSandbox.DataBasedAccess.ready();
+assert.equal(coldTransferred, false, "cold sign_in must not call signIn.create({ transfer: true })");
+
 let signInStarted = false;
 let signUpStarted = false;
 const clickEls = {
@@ -428,5 +490,6 @@ assert.equal(
 
 console.log("pass mocked Clerk user on /splash runs goApp to /");
 console.log("pass external_account_exists transfers to sign-in and stays on /");
+console.log("pass cold sign_in does not transfer");
 console.log("pass Google click starts sign_in");
 console.log("pass / waits for Clerk.load before splash redirect");

@@ -19,7 +19,7 @@ const must = [
   [access, "OAuth handshake completes on /", /redirectUrl:\s*app/],
   [access, "OAuth complete stays on /", /redirectUrlComplete:\s*app/],
   [access, "Google uses Clerk authenticateWithRedirect", /authenticateWithRedirect/],
-  [access, "Google is a full-page redirect, not a popup", /signUp\.authenticateWithRedirect/],
+  [access, "Google is a full-page redirect, not a popup", /signIn\.authenticateWithRedirect/],
   [access, "Clerk session leaves splash before server verify", /if \(!onAppPage\(\)\)/],
   [access, "verified session navigates to /", /function goApp\(/],
   [access, "signed-in sessions are not bounced to splash", /if \(clerkSessionPresent\(\)\) return false;/],
@@ -36,6 +36,7 @@ const forbidden = [
   [access, "must not wait on splash for SYSTEM_USER_EMAIL before leaving", "Nobody can be the system operator until it is set on this Vercel environment"],
   [access, "must not open Google in a popup", "authenticateWithPopup"],
   [access, "must not window.open a Google popup", "window.open("],
+  [access, "must not transfer on a cold sign_in", "function maybeTransferOAuth"],
   [vercel, "must not swallow /api/sync", '"source": "/api/sync"'],
 ];
 

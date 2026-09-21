@@ -14,8 +14,9 @@ const must = [
   ["blocks Account Portal host navigation", /function isClerkAccountPortal\(/],
   ["handleRedirectCallback sets signInUrl to the app", /handleRedirectCallback\(\s*\{[\s\S]*?signInUrl:\s*app/],
   ["shows Opening Google while Clerk JS finishes", /Opening Google/],
-  ["recovers external_account_not_found by transferring to sign-up", /external_account_not_found/],
+  ["recovers external_account_not_found with signUp.authenticateWithRedirect", /startGoogleOAuth\(clerk, true\)/],
   ["transfers existing Google users with signIn.create({ transfer: true })", /signIn\.create\(\s*\{\s*transfer:\s*true/],
+  ["only transfers when sign_up is transferable", /if \(!signUpNeedsTransfer\(clerk\)\) return Promise.resolve\(clerk\)/],
   ["treats external_account_exists as a sign-in transfer", /external_account_exists/],
   ["treats identifier_already_signed_in as an existing session", /identifier_already_signed_in/],
   ["passes transferable on handleRedirectCallback", /handleRedirectCallback\(\s*\{\s*transferable:\s*true/],
@@ -41,6 +42,8 @@ const forbidden = [
   ["blocks the Google click on Clerk still loading", "Clerk is still starting. Try again in a moment."],
   ["opens Google in a popup", "authenticateWithPopup"],
   ["auto-starts Clerk via data-clerk-publishable-key", "data-clerk-publishable-key"],
+  ["cold-load OAuth transfer", "function maybeTransferOAuth"],
+  ["missing-account signUp.create transfer", "function transferOrSignUp"],
 ];
 
 let failed = 0;
