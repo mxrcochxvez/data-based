@@ -3,8 +3,39 @@
   const CONTACT = "marcode.chavez.jr@gmail.com";
   const CLERK_JS = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
 
+  const APP_PATH = "/app";
+
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function pagePath() {
+    return String(location.pathname || "/").replace(/\/+$/, "") || "/";
+  }
+
+  function onAppPage() {
+    const p = pagePath();
+    return p === APP_PATH || /\/app\/index\.html$/.test(p);
+  }
+
+  function appUrl() {
+    return window.location.origin + APP_PATH;
+  }
+
+  function splashUrl() {
+    return window.location.origin + "/";
+  }
+
+  function goApp() {
+    if (onAppPage()) return false;
+    location.replace(appUrl());
+    return true;
+  }
+
+  function goSplash() {
+    if (!onAppPage()) return false;
+    location.replace(splashUrl());
+    return true;
   }
 
   function clerkEmail() {
@@ -74,11 +105,13 @@
   function setBodyGate(name) {
     const splash = $("screen-splash");
     const denied = $("screen-denied");
+    const auth = $("screen-auth");
     if (splash) splash.hidden = name !== "who";
     if (denied) denied.hidden = name !== "denied";
+    if (auth) auth.hidden = name !== "who";
     const gated = name === "who" || name === "denied";
     document.body.classList.toggle("is-gated", gated);
-    document.body.classList.toggle("is-splash", name === "who");
+    document.body.classList.toggle("is-splash", name === "who" && !onAppPage());
     document.body.classList.toggle("is-denied", name === "denied");
     const scroller = $("scroller");
     if (scroller) scroller.setAttribute("aria-hidden", gated ? "true" : scroller.getAttribute("aria-hidden") || "false");
@@ -102,6 +135,10 @@
   }
 
   function showWho(msg) {
+    if (onAppPage() && !(global.Clerk && global.Clerk.user) && !msg) {
+      goSplash();
+      return;
+    }
     const err = $("who-err");
     if (err) {
       if (msg) {
@@ -131,6 +168,10 @@
 
   function clearGate() {
     session.denied = false;
+    if (!onAppPage()) {
+      goApp();
+      return;
+    }
     setBodyGate("");
     paintChrome();
   }
@@ -240,11 +281,10 @@
   }
 
   function oauthRedirectArgs() {
-    const origin = window.location.origin;
     return {
       strategy: "oauth_google",
-      redirectUrl: origin + "/",
-      redirectUrlComplete: origin + "/" + (location.hash || ""),
+      redirectUrl: splashUrl(),
+      redirectUrlComplete: appUrl(),
     };
   }
 
@@ -412,6 +452,7 @@
       session.verified = false;
       session.identityError = "";
       session.clerkUserId = "";
+      if (goSplash()) return;
       showWho();
     };
     if (clerk && typeof clerk.signOut === "function") {
@@ -424,6 +465,11 @@
     const clientEmail = handle();
     const clerkUser = global.Clerk && global.Clerk.user;
     if (!clerkUser) {
+      if (onAppPage()) {
+        goSplash();
+        finish(false);
+        return false;
+      }
       showWho();
       finish(false);
       return false;
@@ -468,9 +514,18 @@
         return false;
       }
       if (!session.hasAppAccess && (session.acl || session.clerk)) {
+        if (!onAppPage()) {
+          goApp();
+          finish(false);
+          return false;
+        }
         showDenied(session.contactEmail);
         finish(false);
         return false;
+      }
+      if (goApp()) {
+        finish(true);
+        return true;
       }
       clearGate();
       finish(true);
@@ -508,6 +563,8 @@
                   showWho(restrictedMessage() + " If Invitations already include this email, Google sign-up should create the user on " + clerkWhere() + ".");
                 } else if (bouncedGoogle) {
                   showWho("Google returned here, but Clerk did not create a session. Look at " + clerkWhere() + " → Users and Invitations — not a different application, and not Production if this site uses pk_test_ (Development). Enable Google, add this origin, and if Restricted, invite the Google email first.");
+                } else if (onAppPage()) {
+                  goSplash();
                 } else {
                   showWho();
                 }
@@ -521,7 +578,7 @@
             clerkFail = detail && detail !== "clerk"
               ? "Clerk failed to start. " + detail
               : "Clerk failed to start. Check this host is allowed on the Clerk instance.";
-            showWho();
+            showWho(clerkFail);
             finish(false);
             return false;
           });
@@ -573,15 +630,13 @@
           if (form) form.hidden = true;
           if (ok) {
             ok.hidden = false;
-            ok.textContent = out.data.via === "invitation"
-              ? "Request received in Clerk Invitations (no email sent). Marco enables the address in Clerk, then you Sign in with Google."
-              : "You’re on the Clerk waitlist. Marco invites that email in Clerk; then Sign in with Google.";
+            ok.textContent = "You’re on the list. That doesn’t guarantee a spot.";
           }
           return;
         }
         if (err) {
           err.hidden = false;
-          err.textContent = waitlistMessage(out.data, "Clerk did not store this request.");
+          err.textContent = waitlistMessage(out.data, "Could not store this request.");
         }
       })
       .catch(() => {
@@ -617,6 +672,13 @@
     return headers().then((h) => fetch("/api/access/boards", { headers: h, credentials: "same-origin" })).then((res) => {
       if (res.status === 403) return Promise.reject(new Error("forbidden"));
       return res.ok ? res.json() : Promise.reject(new Error("boards failed"));
+    });
+  }
+
+  function waitlist() {
+    return headers().then((h) => fetch("/api/access/waitlist", { headers: h, credentials: "same-origin" })).then((res) => {
+      if (res.status === 403) return Promise.reject(new Error("forbidden"));
+      return res.ok ? res.json() : Promise.reject(new Error("waitlist failed"));
     });
   }
 
@@ -656,6 +718,7 @@
     ready: function () { return readyPromise; },
     users,
     boards,
+    waitlist,
     inviteApp,
     revokeApp,
     deniedFromResponse,

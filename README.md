@@ -12,58 +12,49 @@ Static + authed sync (serves `web/` and writes `web/data/store.json`):
 node web/sync-server.mjs
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Default port is `8765` (`PORT` overrides).
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) for the splash. Boards live at [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app). Default port is `8765` (`PORT` overrides).
 
 ### Access control (Clerk + Google)
 
-Sign-in is **Clerk**, **Sign in with Google** only. Logged-out `/` is a marketing splash with **Request access**. There is no public self-signup and no homemade waitlist table.
+Sign-in is **Clerk**, **Sign in with Google** only. `/` is the marketing splash with **Request access**. `/app` is the canvas. There is no public self-signup and no Clerk Waitlist product.
 
 **Env (names only — never commit values)**
 
 | Name | Where | Role |
 | --- | --- | --- |
 | `CLERK_PUBLISHABLE_KEY` | Client via `GET /api/config` | Clerk JS. Also accepted: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY` |
-| `CLERK_SECRET_KEY` | Server only | Verify session JWTs; Clerk waitlist + invitations |
+| `CLERK_SECRET_KEY` | Server only | Verify session JWTs; send Clerk invitations when the operator invites |
 | `SYSTEM_USER_EMAIL` | Server | Clerk email of the operator. Alias: `DATABSED_SYSTEM_EMAIL` |
 
 Example operator: `SYSTEM_USER_EMAIL=marcode.chavez.jr@gmail.com`
 
-After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>`. The server verifies it and uses the **JWT email** for ACL. It does not trust a client-supplied email header when Clerk is configured.
+After Google sign-in the client sends `Authorization: Bearer <Clerk session JWT>`. The server verifies it and uses the **JWT email** for ACL. It does not trust a client-supplied email header when Clerk is configured. A verified operator or granted user is sent to `/app`. Logged-out `/app` returns to `/`.
 
 **Clerk dashboard checklist**
 
 1. Create (or reuse) a Clerk application.
 2. **Social connections → Google**: enable. Add your Google OAuth client ID/secret in Clerk (not in this repo).
 3. **Configure → Restrictions** (or **User & authentication → Restrictions**): set sign-up to **Restricted** so only invited emails can join. Keep public sign-up off.
-4. **Configure → Waitlist**: turn **Waitlist** on so Request access can call `POST /waitlist_entries`.
+4. Do **not** turn on Clerk Waitlist. Request access writes emails into our access store (same KV as boards).
 5. Disable email/password if you want Google-only.
-6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`).
+6. **Paths / allowed origins**: `http://127.0.0.1:8765` and the Vercel URL (`https://ghost-ai-phi-five.vercel.app`). Allow redirects to `/` and `/app`.
 7. Copy the **publishable** key to `CLERK_PUBLISHABLE_KEY`. Copy the **secret** key to `CLERK_SECRET_KEY` on the server / Vercel only.
 8. Invite `SYSTEM_USER_EMAIL` in Clerk (**Users → Invitations**) so that Google account can sign in the first time. After they sign in they are the system operator by email match.
 9. Redeploy after adding env vars.
 
-**How Marco approves someone (Clerk)**
+**How Marco approves someone**
 
-Waitlist (what Request access uses when Waitlist is on):
+1. Sign in and open **People** (`/app#/people`).
+2. Under **Waitlist**, find the email → **Invite**.
+3. That grants our ACL and sends a Clerk invitation. They **Sign in with Google** with that same Google email.
 
-1. Open [dashboard.clerk.com](https://dashboard.clerk.com) and select the application that matches this site’s publishable key (Development if `pk_test_`, Production if `pk_live_`).
-2. Sidebar **Users** → **Waitlist**.
-3. Find the email → **⋯** or the row action → **Invite**.
-4. They get a Clerk invitation. They open the site and **Sign in with Google** with that same Google email.
-
-If Waitlist is off, Request access queues **Users → Invitations** with no email sent. Approve by:
-
-1. **Users → Invitations**.
-2. **Invite user** (or open the queued invitation) → enter the Google email if needed → send / enable.
-3. They **Sign in with Google**.
-
-Then our ACL: `SYSTEM_USER_EMAIL` is the operator. Everyone else still needs **Invite to app** on `#/people` (grants the store ACL and sends a notifying Clerk invitation). A Clerk invitation alone does not replace that grant.
+A request does not guarantee a spot. `SYSTEM_USER_EMAIL` is the operator. A Clerk invitation alone does not replace the app grant.
 
 **How Google invite-only meets our ACL**
 
 - Clerk invitations (dashboard or **Invite to app**) are what let someone complete Google sign-in.
 - Our store still gates the product: even a signed-in Clerk user without app grant sees the full-page no-access screen (`marcode.chavez.jr@gmail.com`).
-- **Invite to app** (`#/people`, system only): grants app access **and** calls Clerk `invitations.createInvitation`.
+- **Invite to app** (`/app#/people`, system only): grants app access **and** calls Clerk `invitations.createInvitation`. Waitlist **Invite** is the same action.
 - **Invite to this board** (`#/invite/:id`, any peer on the board): email on the board only. No Clerk account. They still cannot use the app until the system user grants app access and they sign in with Google.
 
 | Action | Who | Effect |
@@ -174,6 +165,7 @@ Connect the GitHub repo in the Vercel dashboard (root directory = repo root, fra
 | `/api/sync` | `api/sync.mjs` |
 | `/api/config` | `api/config.mjs` (Clerk publishable key only) |
 | `/api/access`, `/api/access/*` | `api/access.mjs` (session, invites, public waitlist POST) |
+| `/app` | static `web/app/index.html` (canvas) |
 | `/mcp`, `/sse`, `/mcp/*`, `/api/mcp/*` | `api/mcp.mjs` |
 
 ### Persistence (required on Vercel)
@@ -224,7 +216,7 @@ bend PROOF.bend
 - Table cards carry a `+` that adds a next-kind card and one arrow. The same card can grow many arrows. Drag a port onto another card to share a module. Notes are not in that helper.
 - Note cards: toolstrip sticky, or marketplace. Click into the card to write. Resize from the corner
 - Empty-state copy is a viewport HUD. Panning the dots does not move it
-- `#/boards` creates and switches boards. `#/invite/:id` invites an email **to that board**. `#/people` (system user) invites **into the product**. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the server; the server filters by user.
+- `/app#/boards` creates and switches boards. `/app#/invite/:id` invites an email **to that board**. `/app#/people` (system user) invites **into the product** and sees the waitlist. No public signup. Boards persist in `localStorage` (`databased.v1`, legacy `data-based.v1`). Authed sessions also sync the same blob to the server; the server filters by user.
 - `V` select, Space pan, `N` note, `Esc` close, `⌫` delete the selected card
 
 ## Native path
@@ -233,7 +225,7 @@ Abandoned. `main.bend` / `view.bend` / `tick.bend` still typecheck as a Bend `Ap
 
 ## Files
 
-- `web/index.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the product
+- `web/index.html`: marketing splash. `web/app/index.html`, `web/app.css`, `web/app.js`, `web/highlight.js`: the boards
 - `web/og.png`, `web/favicon.svg`, `web/favicon.png`, `web/apple-touch-icon.png`: share image and icons
 - `web/js/persist.js`, `web/js/sync.js`, `web/js/access.js`, `web/sync-server.mjs`: localStorage blob + authed `/api/sync` + app-access ACL
 - `api/sync.mjs`, `api/mcp.mjs`, `api/access.mjs`, `api/config.mjs`, `vercel.json`: Vercel static + serverless
