@@ -229,22 +229,130 @@
     });
   }
 
-  function googleRedirect(clerk) {
-    const signIn = clerk && clerk.client && clerk.client.signIn;
+  function oauthRedirectArgs() {
+    const origin = window.location.origin;
+    return {
+      strategy: "oauth_google",
+      redirectUrl: origin + "/",
+      redirectUrlComplete: origin + "/" + (location.hash || ""),
+    };
+  }
+
+  function clerkErrorText(err) {
+    if (!err) return "";
+    if (typeof err === "string") return err;
+    const parts = [];
+    if (err.message) parts.push(String(err.message));
+    if (err.reason) parts.push(String(err.reason));
+    if (Array.isArray(err.errors)) {
+      err.errors.forEach(function (item) {
+        if (!item) return;
+        const bit = [item.code, item.longMessage || item.message].filter(Boolean).join(": ");
+        if (bit) parts.push(bit);
+      });
+    }
+    return parts.join(" ");
+  }
+
+  function bouncePayload() {
+    try {
+      const url = new URL(location.href);
+      const raw = url.searchParams.get("clerk_status")
+        || url.searchParams.get("__clerk_status")
+        || url.searchParams.get("clerk_error")
+        || "";
+      if (raw && raw.charAt(0) === "{") return JSON.parse(raw);
+    } catch (_) {}
+    return null;
+  }
+
+  function isMissingExternalAccount(err) {
+    const blob = clerkErrorText(err) + " " + String(location.href) + " " + JSON.stringify(bouncePayload() || {});
+    return /external_account_not_found|The External Account was not found/i.test(blob);
+  }
+
+  function isRestrictedSignUp(err) {
+    const blob = clerkErrorText(err) + " " + JSON.stringify(bouncePayload() || {});
+    return /sign_up_restricted|not_allowed_to_sign_up|invitation_required|signups?_disabled|restricted/i.test(blob);
+  }
+
+  function restrictedMessage() {
+    return "Clerk Restricted will not create a user from Google until that email is invited. In Clerk Development → Users → Invitations, invite the Google email (the SYSTEM_USER_EMAIL address for the operator). Open the invite, then use Google again.";
+  }
+
+  function startGoogleOAuth(clerk, preferSignUp) {
+    const args = oauthRedirectArgs();
+    const client = clerk && clerk.client;
+    const signUp = client && client.signUp;
+    const signIn = client && client.signIn;
+    if (preferSignUp && signUp && typeof signUp.authenticateWithRedirect === "function") {
+      return signUp.authenticateWithRedirect(args);
+    }
+    if (!preferSignUp && signIn && typeof signIn.authenticateWithRedirect === "function") {
+      return signIn.authenticateWithRedirect(args);
+    }
+    if (signUp && typeof signUp.authenticateWithRedirect === "function") {
+      return signUp.authenticateWithRedirect(args);
+    }
     if (signIn && typeof signIn.authenticateWithRedirect === "function") {
-      return signIn.authenticateWithRedirect.bind(signIn);
+      return signIn.authenticateWithRedirect(args);
     }
     if (clerk && typeof clerk.authenticateWithRedirect === "function") {
-      return clerk.authenticateWithRedirect.bind(clerk);
+      return clerk.authenticateWithRedirect(args);
     }
-    return null;
+    return Promise.reject(new Error("Google OAuth is not ready"));
+  }
+
+  function transferOrSignUp(clerk) {
+    const signUp = clerk && clerk.client && clerk.client.signUp;
+    if (signUp && typeof signUp.create === "function") {
+      return signUp.create({ transfer: true }).then(function (su) {
+        if (su && su.status === "complete" && su.createdSessionId && typeof clerk.setActive === "function") {
+          return clerk.setActive({ session: su.createdSessionId }).then(function () { return clerk; });
+        }
+        const run = su && typeof su.authenticateWithRedirect === "function"
+          ? su.authenticateWithRedirect.bind(su)
+          : (typeof signUp.authenticateWithRedirect === "function" ? signUp.authenticateWithRedirect.bind(signUp) : null);
+        if (run) return run(oauthRedirectArgs()).then(function () { return clerk; });
+        throw new Error("external_account_not_found");
+      });
+    }
+    return startGoogleOAuth(clerk, true).then(function () { return clerk; });
+  }
+
+  function finishOAuthBounce(clerk) {
+    const href = String(location.href);
+    const bounced = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
+    if (!bounced || typeof clerk.handleRedirectCallback !== "function") {
+      return Promise.resolve(clerk);
+    }
+    return clerk.handleRedirectCallback({ transferable: true }).then(function () {
+      return clerk;
+    }).catch(function (err) {
+      if (isRestrictedSignUp(err)) {
+        clerkFail = restrictedMessage();
+        return clerk;
+      }
+      if (isMissingExternalAccount(err)) {
+        return transferOrSignUp(clerk).catch(function (signUpErr) {
+          clerkFail = isRestrictedSignUp(signUpErr) ? restrictedMessage() : (clerkErrorText(signUpErr) || restrictedMessage());
+          return clerk;
+        });
+      }
+      clerkFail = clerkErrorText(err) || "Clerk did not finish Google sign-in.";
+      return clerk;
+    });
   }
 
   function signInGoogle() {
     const err = $("who-err");
     const clerk = global.Clerk;
-    const redirect = googleRedirect(clerk);
-    if (!redirect) {
+    const client = clerk && clerk.client;
+    const canRedirect = client && (
+      (client.signUp && typeof client.signUp.authenticateWithRedirect === "function")
+      || (client.signIn && typeof client.signIn.authenticateWithRedirect === "function")
+    ) || (clerk && typeof clerk.authenticateWithRedirect === "function");
+    if (!canRedirect) {
       if (err) {
         err.hidden = false;
         if (clerkStatus === "failed") {
@@ -259,15 +367,29 @@
       }
       return;
     }
-    redirect({
-      strategy: "oauth_google",
-      redirectUrl: window.location.href,
-      redirectUrlComplete: window.location.origin + "/" + (location.hash || ""),
-    }).catch(function () {
-      if (err) {
-        err.hidden = false;
-        err.textContent = "Google sign-in failed. Enable Google on the Clerk instance, or invite this email.";
+    startGoogleOAuth(clerk, true).catch(function (err) {
+      if (isRestrictedSignUp(err)) {
+        if (err) {
+          const box = $("who-err");
+          if (box) {
+            box.hidden = false;
+            box.textContent = restrictedMessage();
+          }
+        }
+        return;
       }
+      if (isMissingExternalAccount(err)) {
+        return startGoogleOAuth(clerk, true);
+      }
+      return startGoogleOAuth(clerk, false).catch(function (second) {
+        const box = $("who-err");
+        if (box) {
+          box.hidden = false;
+          box.textContent = isRestrictedSignUp(second)
+            ? restrictedMessage()
+            : (clerkErrorText(second) || clerkErrorText(err) || "Google sign-in failed. Enable Google on the Clerk instance, or invite this email in Development.");
+        }
+      });
     });
   }
 
@@ -353,24 +475,22 @@
           session.clerk = true;
           return bootClerk(cfg.publishableKey).then(function (clerk) {
             const href = String(location.href);
-            const bounced = /__clerk|clerk_status/i.test(href) && typeof clerk.handleRedirectCallback === "function"
-              ? clerk.handleRedirectCallback().then(function () { return clerk; }).catch(function (err) {
-                clerkFail = err && err.message ? String(err.message) : "Clerk did not finish Google sign-in.";
-                return clerk;
-              })
-              : Promise.resolve(clerk);
-            return bounced.then(function (ready) {
+            return finishOAuthBounce(clerk).then(function (ready) {
               if (ready && ready.addListener) {
                 ready.addListener(function (res) {
                   if (res && res.user && session.ready && (session.denied || !session.hasAppAccess)) afterSession();
                 });
               }
               if (!ready.user) {
-                const bouncedGoogle = /__clerk|clerk_status|clerk_error/i.test(href);
+                const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
                 if (clerkFail) {
-                  showWho(clerkFail + " Users appear in Clerk only after this instance accepts Google. Check " + clerkWhere() + ", Google enabled, allowed origins include this Vercel URL, and Restricted/Invitations if sign-ups are off.");
+                  showWho(clerkFail);
+                } else if (bouncedGoogle && isRestrictedSignUp()) {
+                  showWho(restrictedMessage());
+                } else if (bouncedGoogle && isMissingExternalAccount()) {
+                  showWho(restrictedMessage() + " If Invitations already include this email, Google sign-up should create the user on " + clerkWhere() + ".");
                 } else if (bouncedGoogle) {
-                  showWho("Google returned here, but Clerk did not create a session. Look at " + clerkWhere() + " → Users and Invitations — not a different application, and not Production if this site uses pk_test_ (Development). Enable Google, add this origin, and if Restricted, invite the system email first.");
+                  showWho("Google returned here, but Clerk did not create a session. Look at " + clerkWhere() + " → Users and Invitations — not a different application, and not Production if this site uses pk_test_ (Development). Enable Google, add this origin, and if Restricted, invite the Google email first.");
                 } else {
                   showWho();
                 }
