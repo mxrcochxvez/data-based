@@ -134,6 +134,36 @@
     };
   }
 
+  function boardContent(b) {
+    if (!b || typeof b !== "object") return "";
+    return JSON.stringify({
+      id: b.id,
+      name: b.name,
+      cards: b.cards,
+      edges: b.edges,
+      nextId: b.nextId,
+      placeAt: b.placeAt,
+      grants: b.grants,
+    });
+  }
+
+  function rememberBoards(doc) {
+    const boards = doc && Array.isArray(doc.boards) ? doc.boards : [];
+    for (let i = 0; i < boards.length; i++) {
+      const b = boards[i];
+      if (b && b.id) Persist._lastContent[b.id] = boardContent(b);
+    }
+  }
+
+  function markDirty(b) {
+    if (!b || !b.id) return false;
+    const next = boardContent(b);
+    if (Persist._lastContent[b.id] === next) return false;
+    b.updatedAt = Date.now();
+    Persist._lastContent[b.id] = next;
+    return true;
+  }
+
   function mergeDoc(prev, next) {
     const base = prev && typeof prev === "object" ? prev : {};
     const doc = next && typeof next === "object" ? next : {};
@@ -153,20 +183,37 @@
     snapshotCamera,
     snapshotBoard,
     snapshotDoc,
+    boardContent,
+    markDirty,
+    remember: rememberBoards,
+    pending() {
+      return this._pending != null;
+    },
     _mem: null,
+    _lastContent: Object.create(null),
     _timer: 0,
     _pending: null,
 
     readSync() {
       const cur = readLocal(KEY);
-      if (cur) return snapshotDoc(cur);
+      if (cur) {
+        const snap = snapshotDoc(cur);
+        rememberBoards(snap);
+        return snap;
+      }
       const old = readLocal(LEGACY);
       if (old) {
         const migrated = snapshotDoc(old);
         try { localStorage.setItem(KEY, JSON.stringify(migrated)); } catch (_) {}
+        rememberBoards(migrated);
         return migrated;
       }
-      return this._mem ? snapshotDoc(this._mem) : null;
+      if (this._mem) {
+        const snap = snapshotDoc(this._mem);
+        rememberBoards(snap);
+        return snap;
+      }
+      return null;
     },
 
     async read() {
@@ -189,6 +236,7 @@
       const prev = this.readSync() || this._mem || {};
       const next = mergeDoc(prev, doc);
       this._mem = next;
+      rememberBoards(next);
       try {
         writeLocal(next);
       } catch (err) {

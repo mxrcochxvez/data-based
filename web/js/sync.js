@@ -1,16 +1,24 @@
 /* Authed periodic sync. localStorage (databased.v1) stays the offline source of truth.
    v1 merge is last-write-wins on numeric updatedAt: a newer local draft is never
-   replaced by an older server copy. Concurrent edits can drop the older write. */
+   replaced by an older server copy. Concurrent edits can drop the older write.
+   Open-board poll GETs /api/sync every INTERVAL_MS (backoff on errors). Idle
+   pan/zoom does not bump updatedAt, so it cannot clobber the other device. */
 (function (global) {
   const KEY = "databased.v1";
   const LEGACY = "data-based.v1";
-  const USER_KEY = "databased.user";
-  const TOKEN_KEY = "databased.token";
   const ENDPOINT = "/api/sync";
-  const INTERVAL_MS = 20000;
+  const INTERVAL_MS = 4000;
+  const MAX_INTERVAL_MS = 32000;
+  const KICK_MS = 400;
 
   let lastPayload = "";
   let timer = 0;
+  let kickTimer = 0;
+  let delay = INTERVAL_MS;
+  let fails = 0;
+  let busy = false;
+  let booted = false;
+  let applying = false;
 
   function isAuthed() {
     try {
@@ -66,10 +74,52 @@
     return null;
   }
 
-  function readDoc() {
-    const flush = fn("flushBoard");
+  function boardOpen() {
+    const store = liveStore();
+    if (!store || !store.currentId || !Array.isArray(store.boards) || !store.boards.length) return false;
+    const hash = String(location.hash || "#/").replace(/^#/, "") || "/";
+    if (hash.indexOf("/boards") === 0) return false;
+    if (hash.indexOf("/invite") === 0) return false;
+    if (hash.indexOf("/people") === 0) return false;
+    if (hash.indexOf("/mcp") === 0) return false;
+    const scroller = document.getElementById("scroller");
+    return Boolean(scroller);
+  }
+
+  function typing() {
+    const t = document.activeElement;
+    return t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || Boolean(t && t.isContentEditable);
+  }
+
+  function pendingPersist() {
+    return Boolean(global.Persist && typeof global.Persist.pending === "function" && global.Persist.pending());
+  }
+
+  function boardBody(b) {
+    if (global.Persist && typeof global.Persist.boardContent === "function") return global.Persist.boardContent(b);
+    if (!b) return "";
+    return JSON.stringify({
+      id: b.id,
+      name: b.name,
+      cards: b.cards,
+      edges: b.edges,
+      nextId: b.nextId,
+      placeAt: b.placeAt,
+      grants: b.grants,
+    });
+  }
+
+  function contentKey(doc) {
+    if (!doc || !Array.isArray(doc.boards)) return "";
+    return JSON.stringify(doc.boards.map((b) => boardBody(b)).sort());
+  }
+
+  function readDoc(flush) {
     if (flush) {
-      try { flush(); } catch (_) {}
+      const flushFn = fn("flushBoard");
+      if (flushFn) {
+        try { flushFn(); } catch (_) {}
+      }
     }
     if (global.Persist && typeof global.Persist.readSync === "function") {
       const fromPersist = global.Persist.readSync();
@@ -94,22 +144,38 @@
     return doc;
   }
 
-  function flushLocal() {
-    const flush = fn("flushBoard");
-    if (flush) {
-      try { flush(); } catch (_) {}
-    }
+  function flushPending() {
     const store = liveStore();
+    if (global.Persist && typeof global.Persist.flush === "function" && pendingPersist()) {
+      global.Persist.flush();
+      return;
+    }
+    const flushFn = fn("flushBoard");
+    if (flushFn) {
+      try { flushFn(); } catch (_) {}
+    }
     if (global.Persist && typeof global.Persist.flush === "function" && store) {
       global.Persist.flush({
         boards: store.boards,
         currentId: store.currentId,
         updatedAt: store.updatedAt || Date.now(),
       });
+    }
+  }
+
+  function keepCamera(board) {
+    if (!board) return;
+    if (global.Camera && typeof global.Camera.flush === "function") {
+      try { global.Camera.flush(board); } catch (_) {}
       return;
     }
-    const doc = readDoc();
-    if (doc) writeLocal(doc);
+    const db = global.DB && global.DB.state;
+    if (db && db.camera) {
+      board.camera = {
+        pan: { x: db.camera.pan.x, y: db.camera.pan.y },
+        zoom: db.camera.zoom,
+      };
+    }
   }
 
   function applyRemote(doc) {
@@ -133,22 +199,39 @@
       };
     }
     const store = liveStore();
+    const keepId = store && store.currentId;
+    const localBoard = store && Array.isArray(store.boards)
+      ? store.boards.find((b) => b.id === keepId)
+      : null;
+    const remoteBoard = (doc.boards || []).find((b) => b.id === keepId);
+    const sameView = Boolean(localBoard && remoteBoard && boardBody(localBoard) === boardBody(remoteBoard));
     if (store && Array.isArray(doc.boards)) {
       store.boards.length = 0;
       for (let i = 0; i < doc.boards.length; i++) store.boards.push(doc.boards[i]);
-      store.currentId = doc.currentId;
+      if (keepId && store.boards.some((b) => b.id === keepId)) store.currentId = keepId;
+      else store.currentId = doc.currentId;
       store.updatedAt = doc.updatedAt;
       const board = store.boards.find((b) => b.id === store.currentId) || store.boards[0];
-      const hydrate = fn("hydrateBoard") || fn("hydrate");
-      if (board && hydrate) {
-        try { hydrate(board); } catch (_) {}
+      if (!sameView) {
+        keepCamera(board);
+        const hydrate = fn("hydrateBoard") || fn("hydrate");
+        if (board && hydrate) {
+          try { hydrate(board); } catch (_) {}
+        }
+        const render = fn("renderCards");
+        try { if (render) render(); } catch (_) {}
       }
-      const render = fn("renderCards");
       const chrome = fn("renderBoardChrome") || fn("chrome");
-      try { if (render) render(); } catch (_) {}
       try { if (chrome) chrome(); } catch (_) {}
+      doc.currentId = store.currentId;
+      doc.updatedAt = store.updatedAt;
     }
-    writeLocal(doc);
+    applying = true;
+    try {
+      writeLocal(doc);
+    } finally {
+      applying = false;
+    }
     lastPayload = JSON.stringify(doc);
   }
 
@@ -167,12 +250,28 @@
     }).catch(() => null);
   }
 
+  function localDirty(local) {
+    if (pendingPersist()) return true;
+    if (!lastPayload) return Boolean(local && Array.isArray(local.boards) && local.boards.length);
+    const prev = parse(lastPayload);
+    return contentKey(local) !== contentKey(prev);
+  }
+
   function push(reason) {
     if (!isAuthed()) return Promise.resolve(false);
-    const doc = readDoc();
+    if (reason === "interval" || reason === "kick") {
+      if (pendingPersist()) flushPending();
+    } else {
+      flushPending();
+    }
+    const doc = readDoc(false);
     if (!doc || !Array.isArray(doc.boards)) return Promise.resolve(false);
     const body = JSON.stringify(doc);
     if (reason !== "unload" && body === lastPayload) return Promise.resolve(true);
+    if (reason !== "unload" && lastPayload && contentKey(doc) === contentKey(parse(lastPayload))) {
+      lastPayload = body;
+      return Promise.resolve(true);
+    }
 
     if (reason === "unload") {
       return authHeaders().then((headers) => fetch(ENDPOINT, {
@@ -201,15 +300,18 @@
 
   function pull() {
     if (!isAuthed()) return Promise.resolve(false);
+    if (typing()) return Promise.resolve(false);
     return authHeaders().then((headers) => quietFetch(ENDPOINT, { headers, credentials: "same-origin" })).then((res) => {
       if (!res) return false;
       return res.json().then((remote) => {
         if (!remote || !Array.isArray(remote.boards)) return false;
-        flushLocal();
-        const local = readDoc();
+        const local = readDoc(false);
         const access = global.DataBasedAccess;
         const serverTruth = access && access.session && access.session.acl;
-        if (serverTruth || docUpdatedAt(remote) > docUpdatedAt(local) || (remote.boards.length && !(local && local.boards && local.boards.length))) {
+        const remoteAt = docUpdatedAt(remote);
+        const localAt = docUpdatedAt(local);
+        if (localDirty(local) && localAt >= remoteAt && !serverTruth) return false;
+        if (serverTruth || remoteAt > localAt || (remote.boards.length && !(local && local.boards && local.boards.length))) {
           applyRemote(remote);
           return true;
         }
@@ -218,25 +320,73 @@
     });
   }
 
-  function kick() {
-    // persist.js calls this after a local write. Interval / hide / unload do the POST.
+  function arm(ms) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = 0;
+      cycle("interval");
+    }, ms);
   }
 
-  function tick() {
-    if (!isAuthed()) return;
-    flushLocal();
-    push("interval");
+  function ok() {
+    fails = 0;
+    delay = INTERVAL_MS;
+  }
+
+  function backoff() {
+    fails += 1;
+    delay = Math.min(INTERVAL_MS * Math.pow(2, Math.min(fails, 4)), MAX_INTERVAL_MS);
+  }
+
+  function cycle(reason) {
+    if (!isAuthed() || busy) {
+      if (reason === "interval") arm(delay);
+      return Promise.resolve(false);
+    }
+    if (reason === "interval" && (document.hidden || !boardOpen())) {
+      arm(delay);
+      return Promise.resolve(false);
+    }
+    busy = true;
+    const run = (reason === "hide" || reason === "unload")
+      ? push(reason)
+      : (localDirty(readDoc(false)) && !typing()
+        ? push(reason === "kick" ? "kick" : "interval").then(() => pull())
+        : pull());
+    return run.then((did) => {
+      ok();
+      return did;
+    }).catch(() => {
+      backoff();
+      return false;
+    }).then((did) => {
+      busy = false;
+      if (reason !== "unload") arm(delay);
+      return did;
+    });
+  }
+
+  function kick() {
+    if (!isAuthed() || applying) return;
+    if (kickTimer) clearTimeout(kickTimer);
+    kickTimer = setTimeout(() => {
+      kickTimer = 0;
+      if (busy) {
+        kick();
+        return;
+      }
+      cycle("kick");
+    }, KICK_MS);
   }
 
   function onHidden() {
     if (!isAuthed()) return;
-    flushLocal();
-    push("hide");
+    cycle("hide");
   }
 
   function onUnload() {
     if (!isAuthed()) return;
-    flushLocal();
+    flushPending();
     push("unload");
   }
 
@@ -244,17 +394,21 @@
     if (!isAuthed()) return;
     pull().then((applied) => {
       if (!applied) push("boot");
+    }).then(() => {
+      arm(INTERVAL_MS);
     });
-    if (timer) clearInterval(timer);
-    timer = setInterval(tick, INTERVAL_MS);
+    if (booted) return;
+    booted = true;
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) onHidden();
+      else if (isAuthed() && boardOpen()) cycle("interval");
     });
     window.addEventListener("beforeunload", onUnload);
   }
 
   global.DataBasedSync = {
     INTERVAL_MS,
+    MAX_INTERVAL_MS,
     endpoint: ENDPOINT,
     isAuthed,
     kick,
@@ -266,7 +420,7 @@
     const access = global.DataBasedAccess;
     const go = () => setTimeout(boot, 0);
     if (access && typeof access.ready === "function") {
-      access.ready().then((ok) => { if (ok) go(); });
+      access.ready().then((okNow) => { if (okNow) go(); });
     } else {
       go();
     }

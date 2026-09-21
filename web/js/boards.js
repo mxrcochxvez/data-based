@@ -67,7 +67,12 @@
   }
 
   function snapshot() {
-    store.updatedAt = Date.now();
+    let maxAt = Number(store.updatedAt) || 0;
+    for (let i = 0; i < store.boards.length; i++) {
+      const t = Number(store.boards[i] && store.boards[i].updatedAt) || 0;
+      if (t > maxAt) maxAt = t;
+    }
+    store.updatedAt = maxAt;
     const doc = { boards: store.boards, currentId: store.currentId, updatedAt: store.updatedAt };
     return Persist && typeof Persist.snapshotDoc === "function" ? Persist.snapshotDoc(doc) : doc;
   }
@@ -86,9 +91,11 @@
     if (global.Camera && typeof global.Camera.flush === "function") global.Camera.flush(b);
     else if (s.camera) b.camera = { pan: { x: s.camera.pan.x, y: s.camera.pan.y }, zoom: s.camera.zoom };
     if (Persist && typeof Persist.snapshotCamera === "function") b.camera = Persist.snapshotCamera(b.camera);
-    b.updatedAt = Date.now();
     const flow = global.DataBasedFlow;
     if (flow && typeof flow.flushToBoard === "function") flow.flushToBoard(b);
+    if (Persist && typeof Persist.markDirty === "function") {
+      if (Persist.markDirty(b)) store.updatedAt = b.updatedAt;
+    }
   }
 
   function hydrateBoard(b) {
@@ -140,6 +147,10 @@
     const invite = $("invite-link");
     if (name) name.textContent = b.name;
     if (invite) invite.href = "#/invite/" + b.id;
+    const phoneShare = $("invite-link-phone");
+    if (phoneShare) phoneShare.href = "#/invite/" + b.id;
+    const mcp = $("mcp-link");
+    if (mcp) mcp.href = "#/invite/" + b.id;
   }
 
   function renderBoardList() {
@@ -446,6 +457,7 @@
     current: currentBoard,
     hydrate: hydrateBoard,
     flush: flushBoard,
+    open: openBoard,
     chrome: renderBoardChrome,
     route,
   };
