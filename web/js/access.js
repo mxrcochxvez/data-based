@@ -72,12 +72,13 @@
   let clerkFail = "";
 
   function setBodyGate(name) {
-    const who = $("screen-who");
+    const splash = $("screen-splash");
     const denied = $("screen-denied");
-    if (who) who.hidden = name !== "who";
+    if (splash) splash.hidden = name !== "who";
     if (denied) denied.hidden = name !== "denied";
     const gated = name === "who" || name === "denied";
     document.body.classList.toggle("is-gated", gated);
+    document.body.classList.toggle("is-splash", name === "who");
     document.body.classList.toggle("is-denied", name === "denied");
     const scroller = $("scroller");
     if (scroller) scroller.setAttribute("aria-hidden", gated ? "true" : scroller.getAttribute("aria-hidden") || "false");
@@ -499,7 +500,7 @@
               }
               if (!ready.user) {
                 const bouncedGoogle = /__clerk|clerk_status|clerk_error|external_account_not_found/i.test(href);
-                if (clerkFail) {
+                if (bouncedGoogle && clerkFail) {
                   showWho(clerkFail);
                 } else if (bouncedGoogle && isRestrictedSignUp()) {
                   showWho(restrictedMessage());
@@ -517,18 +518,80 @@
             });
           }).catch(function (err) {
             const detail = err && err.message ? String(err.message) : "";
-            showWho(
-              detail && detail !== "clerk"
-                ? "Clerk failed to start. " + detail
-                : "Clerk failed to start. Check this host is allowed on the Clerk instance."
-            );
+            clerkFail = detail && detail !== "clerk"
+              ? "Clerk failed to start. " + detail
+              : "Clerk failed to start. Check this host is allowed on the Clerk instance.";
+            showWho();
             finish(false);
             return false;
           });
         }
-        showWho("Server did not send a Clerk publishable key. Set CLERK_PUBLISHABLE_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, or VITE_CLERK_PUBLISHABLE_KEY on Vercel and redeploy.");
+        showWho();
         finish(false);
         return false;
+      });
+  }
+
+  function waitlistMessage(data, fallback) {
+    if (data && data.message) return String(data.message);
+    return fallback;
+  }
+
+  function submitWaitlist(ev) {
+    if (ev) ev.preventDefault();
+    const form = $("waitlist-form");
+    const input = $("waitlist-email");
+    const submit = $("waitlist-submit");
+    const ok = $("waitlist-ok");
+    const err = $("who-err");
+    const email = input ? String(input.value || "").trim() : "";
+    if (ok) { ok.hidden = true; ok.textContent = ""; }
+    if (err) { err.hidden = true; err.textContent = ""; }
+    if (!email || email.indexOf("@") < 1) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = "Enter a valid email.";
+      }
+      return;
+    }
+    if (submit) submit.disabled = true;
+    fetch("/api/access/waitlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ email }),
+    }).then((res) => res.json().then((data) => ({ res, data })).catch(() => ({ res, data: null })))
+      .then((out) => {
+        if (!out) {
+          if (err) {
+            err.hidden = false;
+            err.textContent = "Could not reach the server.";
+          }
+          return;
+        }
+        if (out.res.ok && out.data && out.data.ok) {
+          if (form) form.hidden = true;
+          if (ok) {
+            ok.hidden = false;
+            ok.textContent = out.data.via === "invitation"
+              ? "Request received in Clerk Invitations (no email sent). Marco enables the address in Clerk, then you Sign in with Google."
+              : "You’re on the Clerk waitlist. Marco invites that email in Clerk; then Sign in with Google.";
+          }
+          return;
+        }
+        if (err) {
+          err.hidden = false;
+          err.textContent = waitlistMessage(out.data, "Clerk did not store this request.");
+        }
+      })
+      .catch(() => {
+        if (err) {
+          err.hidden = false;
+          err.textContent = "Could not reach the server.";
+        }
+      })
+      .then(() => {
+        if (submit) submit.disabled = false;
       });
   }
 
@@ -539,6 +602,8 @@
     if (out) out.addEventListener("click", signOut);
     const deniedOut = $("denied-sign-out");
     if (deniedOut) deniedOut.addEventListener("click", signOut);
+    const waitlist = $("waitlist-form");
+    if (waitlist) waitlist.addEventListener("submit", submitWaitlist);
   }
 
   function users() {
