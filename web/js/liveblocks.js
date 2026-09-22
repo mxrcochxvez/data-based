@@ -40,6 +40,7 @@
   let commentsBound = false;
   let replyBusy = false;
   let paintSeq = 0;
+  const pendingIds = new Set();
 
   function authHeaders() {
     if (window.DataBasedAccess && typeof window.DataBasedAccess.headers === "function") {
@@ -495,6 +496,43 @@
     return list.filter((c) => c && !c.deletedAt);
   }
 
+  function unionComments(a, b) {
+    const out = [];
+    const seen = new Set();
+    for (const list of [a, b]) {
+      if (!Array.isArray(list)) continue;
+      for (const c of list) {
+        if (!c) continue;
+        const key = c.id ? String(c.id) : "";
+        if (key) {
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  function mergeThread(local, remote) {
+    if (!remote) return local || remote;
+    if (!local) return remote;
+    const out = Object.assign({}, local, remote, {
+      comments: unionComments(local.comments, remote.comments),
+    });
+    const localMs = toMs(local.updatedAt || local.createdAt);
+    const remoteMs = toMs(remote.updatedAt || remote.createdAt);
+    if (localMs > remoteMs) out.updatedAt = local.updatedAt || local.createdAt;
+    return out;
+  }
+
+  function mergeLocalThread(thread) {
+    if (!thread || !thread.id) return;
+    const prev = threads.get(thread.id);
+    threads.set(thread.id, prev ? mergeThread(prev, thread) : thread);
+    pendingIds.add(thread.id);
+  }
+
   function threadMeta(thread) {
     const meta = (thread && thread.metadata) || {};
     const x = Number(meta.x);
@@ -519,21 +557,38 @@
   }
 
   function applyFullThreads(result) {
-    threads.clear();
     const list = result && result.threads;
-    if (Array.isArray(list)) {
-      for (const t of list) {
-        if (t && t.id) threads.set(t.id, t);
-      }
+    const incoming = Array.isArray(list) ? list : [];
+    const seen = new Set();
+    for (const t of incoming) {
+      if (!t || !t.id) continue;
+      seen.add(t.id);
+      pendingIds.delete(t.id);
+      threads.set(t.id, mergeThread(threads.get(t.id), t));
     }
-    commentsSince = result && result.requestedAt ? result.requestedAt : commentsSince;
+    let missingPending = false;
+    for (const [id] of [...threads.entries()]) {
+      if (seen.has(id)) {
+        pendingIds.delete(id);
+        continue;
+      }
+      if (pendingIds.has(id)) {
+        missingPending = true;
+        continue;
+      }
+      threads.delete(id);
+    }
+    if (!missingPending && result && result.requestedAt) commentsSince = result.requestedAt;
   }
 
   function applySinceThreads(result) {
     const pack = result && result.threads;
     if (pack && Array.isArray(pack.updated)) {
       for (const t of pack.updated) {
-        if (t && t.id) threads.set(t.id, t);
+        if (t && t.id) {
+          pendingIds.delete(t.id);
+          threads.set(t.id, mergeThread(threads.get(t.id), t));
+        }
       }
     }
     if (pack && Array.isArray(pack.deleted)) {
@@ -543,10 +598,17 @@
     }
     if (Array.isArray(pack)) {
       for (const t of pack) {
-        if (t && t.id) threads.set(t.id, t);
+        if (t && t.id) {
+          pendingIds.delete(t.id);
+          threads.set(t.id, mergeThread(threads.get(t.id), t));
+        }
       }
     }
-    if (result && result.requestedAt) commentsSince = result.requestedAt;
+    let missingPending = false;
+    for (const id of threads.keys()) {
+      if (pendingIds.has(id)) missingPending = true;
+    }
+    if (!missingPending && result && result.requestedAt) commentsSince = result.requestedAt;
   }
 
   function sortedThreads() {
@@ -701,11 +763,33 @@
       if (!text || !currentRoom || typeof currentRoom.createThread !== "function") return;
       try {
         rememberSelf();
-        await currentRoom.createThread({
+        const thread = await currentRoom.createThread({
           body: commentBody(text),
           metadata: { x: meta.x, y: meta.y, cardId: meta.cardId },
         });
+        mergeLocalThread(thread && thread.id ? thread : {
+          id: "local-" + Date.now(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          metadata: { x: meta.x, y: meta.y, cardId: meta.cardId },
+          comments: [{
+            id: "local-c-" + Date.now(),
+            createdAt: new Date(),
+            userId: (currentRoom.getSelf && currentRoom.getSelf() && currentRoom.getSelf().id) || "",
+            body: commentBody(text),
+          }],
+        });
+        if (thread && thread.id && !liveComments(threads.get(thread.id)).length) {
+          mergeLocalComment(thread.id, {
+            id: "local-c-" + Date.now(),
+            threadId: thread.id,
+            createdAt: new Date(),
+            userId: (currentRoom.getSelf && currentRoom.getSelf() && currentRoom.getSelf().id) || "",
+            body: commentBody(text),
+          });
+        }
         closeComposer();
+        await paintComments();
         await refreshThreads();
       } catch (err) {
         console.warn("Could not create comment:", err);
@@ -760,6 +844,7 @@
       comments: notes,
       updatedAt: comment.createdAt || new Date(),
     }));
+    pendingIds.add(threadId);
   }
 
   async function sendReply(form) {
@@ -846,6 +931,7 @@
       if (seq !== paintSeq) return;
       list.innerHTML = parts.join("");
       bindThreadList(list);
+      revealLatest(list);
       return;
     }
 
@@ -871,6 +957,17 @@
     if (seq !== paintSeq) return;
     list.innerHTML = parts.join("");
     bindThreadList(list);
+    revealLatest(list);
+  }
+
+  function revealLatest(list) {
+    if (!list) return;
+    const note = list.querySelector(".comment-note:last-of-type");
+    const row = list.querySelector(".comment-row");
+    const el = note || row;
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
 
   function bindThreadList(list) {
@@ -1019,6 +1116,7 @@
     stopCommentsPoll();
     threads.clear();
     commentsSince = null;
+    pendingIds.clear();
     openThreadId = "";
     closeComposer();
     syncCommentsChrome();
