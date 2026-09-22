@@ -39,7 +39,13 @@
   let composerAway = null;
   let commentsBound = false;
   let replyBusy = false;
+  let commentBusy = false;
   let paintSeq = 0;
+  let commentMenu = null;
+  let commentHold = null;
+  let commentSuppressClick = false;
+  const COMMENT_HOLD_MS = 520;
+  const COMMENT_HOLD_MOVE = 10;
 
   function authHeaders() {
     if (window.DataBasedAccess && typeof window.DataBasedAccess.headers === "function") {
@@ -205,6 +211,64 @@
     const meta = (thread && thread.metadata) || {};
     if (meta.author) return authorLabel(meta.author);
     return authorLabel(note && note.userId);
+  }
+
+  function selfIds() {
+    const ids = new Set();
+    const add = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return;
+      ids.add(raw);
+      ids.add(raw.toLowerCase());
+    };
+    try {
+      if (currentRoom && typeof currentRoom.getSelf === "function") {
+        const self = currentRoom.getSelf();
+        if (self && self.id) add(self.id);
+        if (self && self.info) {
+          add(self.info.email);
+          add(self.info.name);
+        }
+      }
+    } catch (_) {}
+    try {
+      const user = window.Clerk && window.Clerk.user;
+      if (user) {
+        add(user.id);
+        add(user.username);
+        add(user.primaryEmailAddress && user.primaryEmailAddress.emailAddress);
+      }
+    } catch (_) {}
+    const access = window.DataBasedAccess;
+    if (access && typeof access.handle === "function") {
+      try { add(access.handle()); } catch (_) {}
+    }
+    if (access && access.session) {
+      add(access.session.email);
+      add(access.session.clerkUserId);
+    }
+    return ids;
+  }
+
+  function isSystemAdmin() {
+    const access = window.DataBasedAccess;
+    return Boolean(access && typeof access.isSystem === "function" && access.isSystem());
+  }
+
+  function isSelfAuthor(note) {
+    const uid = String((note && note.userId) || "").trim();
+    if (!uid) return false;
+    const ids = selfIds();
+    return ids.has(uid) || ids.has(uid.toLowerCase());
+  }
+
+  function canManageComment(note) {
+    if (!note || note.deletedAt) return false;
+    return isSelfAuthor(note) || isSystemAdmin();
+  }
+
+  function commentAttr(value) {
+    return sanitize(value).replace(/"/g, "");
   }
 
   function authorInitial(name) {
@@ -573,7 +637,7 @@
 
   async function pollThreads() {
     if (!currentRoom) return;
-    const skipPaint = replyFocused() || replyBusy;
+    const skipPaint = replyFocused() || replyBusy || commentEditing() || commentBusy;
     if (typeof currentRoom.getThreadsSince === "function" && commentsSince) {
       try {
         const result = await currentRoom.getThreadsSince({ since: commentsSince });
@@ -642,6 +706,8 @@
 
   function hideComments() {
     openThreadId = "";
+    closeCommentMenu();
+    cancelCommentEdit();
     persistCommentsOpen(false);
     paintPins();
   }
@@ -798,6 +864,359 @@
     }
   }
 
+  function commentEditing() {
+    return Boolean(document.querySelector(".comment-note.is-edit"));
+  }
+
+  function findComment(threadId, commentId) {
+    const thread = threads.get(threadId);
+    const notes = thread && Array.isArray(thread.comments) ? thread.comments : [];
+    return notes.find((c) => c && c.id === commentId) || null;
+  }
+
+  function currentRoomId() {
+    return currentBoardId ? "board:" + currentBoardId : "";
+  }
+
+  function closeCommentMenu() {
+    if (!commentMenu) return;
+    commentMenu.hidden = true;
+    commentMenu.innerHTML = "";
+  }
+
+  function ensureCommentMenu() {
+    if (commentMenu) return commentMenu;
+    const el = document.createElement("div");
+    el.id = "comment-menu";
+    el.className = "board-menu comment-menu";
+    el.hidden = true;
+    el.setAttribute("role", "menu");
+    el.setAttribute("aria-label", "Comment");
+    document.body.appendChild(el);
+    el.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[role='menuitem']");
+      if (!btn || btn.getAttribute("aria-disabled") === "true") return;
+      ev.preventDefault();
+      runCommentMenu(btn);
+    });
+    commentMenu = el;
+    return el;
+  }
+
+  function placeCommentMenu(clientX, clientY) {
+    const menu = ensureCommentMenu();
+    menu.hidden = false;
+    const pad = 8;
+    const viewW = window.visualViewport ? window.visualViewport.width : innerWidth;
+    const viewH = window.visualViewport ? window.visualViewport.height : innerHeight;
+    const ox = window.visualViewport ? window.visualViewport.offsetLeft : 0;
+    const oy = window.visualViewport ? window.visualViewport.offsetTop : 0;
+    const w = menu.offsetWidth || 196;
+    const h = menu.offsetHeight || 72;
+    let left = ox;
+    let top = oy;
+    let right = ox + viewW;
+    let bottom = oy + viewH;
+    const sheet = commentsPanel();
+    if (sheet && !sheet.hidden) {
+      const box = sheet.getBoundingClientRect();
+      if (box.width && box.height) {
+        left = Math.max(left, box.left);
+        top = Math.max(top, box.top);
+        right = Math.min(right, box.right);
+        bottom = Math.min(bottom, box.bottom);
+      }
+    }
+    let x = clientX;
+    let y = clientY;
+    if (y + h > bottom - pad) y = clientY - h;
+    if (x + w > right - pad) x = right - w - pad;
+    if (y + h > bottom - pad) y = bottom - h - pad;
+    if (x < left + pad) x = left + pad;
+    if (y < top + pad) y = top + pad;
+    menu.style.left = Math.round(x) + "px";
+    menu.style.top = Math.round(y) + "px";
+  }
+
+  function openCommentMenu(ev, target) {
+    const threadId = target && target.getAttribute("data-thread-id");
+    const commentId = target && target.getAttribute("data-comment-id");
+    if (!threadId || !commentId || target.getAttribute("data-can-manage") !== "1") return false;
+    if (window.DataBasedMenu && typeof window.DataBasedMenu.close === "function") {
+      window.DataBasedMenu.close();
+    }
+    const menu = ensureCommentMenu();
+    menu.innerHTML = "";
+    menu.dataset.threadId = threadId;
+    menu.dataset.commentId = commentId;
+    [
+      { act: "edit", label: "Edit" },
+      { act: "delete", label: "Delete", danger: true },
+    ].forEach((item) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "board-menu-item" + (item.danger ? " is-danger" : "");
+      btn.setAttribute("role", "menuitem");
+      btn.dataset.act = item.act;
+      btn.tabIndex = -1;
+      const name = document.createElement("span");
+      name.textContent = item.label;
+      btn.appendChild(name);
+      menu.appendChild(btn);
+    });
+    placeCommentMenu(ev.clientX, ev.clientY);
+    const first = menu.querySelector("[role='menuitem']");
+    if (first) first.focus();
+    return true;
+  }
+
+  function commentTargetFromEvent(ev) {
+    const t = ev.target && ev.target.closest && ev.target.closest("[data-comment-id]");
+    if (!t) return null;
+    const list = commentsList();
+    if (list && !list.contains(t)) return null;
+    return t;
+  }
+
+  function onCommentContext(ev) {
+    const target = commentTargetFromEvent(ev);
+    if (typeof ev.preventDefault === "function") ev.preventDefault();
+    if (commentHold) {
+      commentHold.opened = true;
+      commentSuppressClick = true;
+      clearTimeout(commentHold.timer);
+    }
+    if (!target || target.getAttribute("data-can-manage") !== "1") {
+      closeCommentMenu();
+      return;
+    }
+    openCommentMenu(ev, target);
+  }
+
+  function clearCommentHold() {
+    if (!commentHold) return;
+    clearTimeout(commentHold.timer);
+    commentHold = null;
+  }
+
+  function onCommentHoldDown(ev) {
+    if (ev.pointerType !== "touch" && ev.pointerType !== "pen") return;
+    if (ev.button != null && ev.button !== 0) return;
+    if (ev.target.closest && ev.target.closest("textarea, input, .comment-edit-actions, .comment-reply")) return;
+    const target = commentTargetFromEvent(ev);
+    if (!target || target.getAttribute("data-can-manage") !== "1") return;
+    if (commentHold && commentHold.id !== ev.pointerId) {
+      clearCommentHold();
+      return;
+    }
+    const start = { x: ev.clientX, y: ev.clientY, id: ev.pointerId, target };
+    commentHold = {
+      id: ev.pointerId,
+      x: start.x,
+      y: start.y,
+      target,
+      timer: setTimeout(() => {
+        if (!commentHold || commentHold.id !== start.id) return;
+        commentHold.opened = true;
+        commentSuppressClick = true;
+        openCommentMenu({
+          clientX: commentHold.x,
+          clientY: commentHold.y,
+        }, start.target);
+      }, COMMENT_HOLD_MS),
+    };
+  }
+
+  function onCommentHoldMove(ev) {
+    if (!commentHold || ev.pointerId !== commentHold.id) return;
+    if (Math.hypot(ev.clientX - commentHold.x, ev.clientY - commentHold.y) > COMMENT_HOLD_MOVE) {
+      clearCommentHold();
+    }
+  }
+
+  function onCommentHoldUp(ev) {
+    if (!commentHold || ev.pointerId !== commentHold.id) return;
+    if (commentHold.opened) {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    clearCommentHold();
+  }
+
+  function cancelCommentEdit(article) {
+    const note = article || document.querySelector(".comment-note.is-edit");
+    if (!note) return;
+    note.classList.remove("is-edit");
+    const body = note.querySelector(".comment-note-body");
+    if (body) body.hidden = false;
+    const edit = note.querySelector(".comment-edit");
+    if (edit) edit.remove();
+  }
+
+  function beginCommentEdit(article) {
+    if (!article) return;
+    document.querySelectorAll(".comment-note.is-edit").forEach((el) => {
+      if (el !== article) cancelCommentEdit(el);
+    });
+    if (article.classList.contains("is-edit")) {
+      const ta = article.querySelector(".comment-edit-text");
+      if (ta) ta.focus();
+      return;
+    }
+    const body = article.querySelector(".comment-note-body");
+    if (!body) return;
+    article.classList.add("is-edit");
+    body.hidden = true;
+    const edit = document.createElement("div");
+    edit.className = "comment-edit";
+    edit.innerHTML = '<textarea class="comment-edit-text" rows="3" aria-label="Edit comment"></textarea><div class="comment-edit-actions"><button type="button" class="comment-edit-cancel">Cancel</button><button type="button" class="comment-edit-save">Save</button></div>';
+    const ta = edit.querySelector(".comment-edit-text");
+    ta.value = body.textContent || "";
+    body.after(edit);
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  async function startCommentEdit(threadId, commentId) {
+    if (!threadId || !commentId) return;
+    const list = commentsList();
+    let note = list && list.querySelector('.comment-note[data-comment-id="' + commentAttr(commentId) + '"]');
+    if (!note) {
+      openThreadId = threadId;
+      await paintComments();
+      note = commentsList() && commentsList().querySelector('.comment-note[data-comment-id="' + commentAttr(commentId) + '"]');
+    } else if (openThreadId !== threadId) {
+      openThreadId = threadId;
+      syncCommentsChrome();
+    }
+    if (note) beginCommentEdit(note);
+  }
+
+  function mergeLocalEdit(threadId, commentId, body) {
+    const thread = threads.get(threadId);
+    if (!thread) return;
+    const notes = (Array.isArray(thread.comments) ? thread.comments : []).map((c) => {
+      if (!c || c.id !== commentId) return c;
+      return Object.assign({}, c, { body, editedAt: new Date() });
+    });
+    threads.set(threadId, Object.assign({}, thread, { comments: notes, updatedAt: new Date() }));
+  }
+
+  function mergeLocalDelete(threadId, commentId) {
+    const thread = threads.get(threadId);
+    if (!thread) return;
+    const notes = (Array.isArray(thread.comments) ? thread.comments : []).map((c) => {
+      if (!c || c.id !== commentId) return c;
+      return Object.assign({}, c, { deletedAt: new Date(), body: undefined });
+    });
+    if (!notes.some((c) => c && !c.deletedAt)) {
+      threads.delete(threadId);
+      if (openThreadId === threadId) openThreadId = "";
+      return;
+    }
+    threads.set(threadId, Object.assign({}, thread, { comments: notes, updatedAt: new Date() }));
+  }
+
+  async function serverComment(action, threadId, commentId, text) {
+    const headers = await authHeaders();
+    const res = await fetch("/api/liveblocks-comment", {
+      method: "POST",
+      headers: Object.assign({}, headers, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        action,
+        room: currentRoomId(),
+        threadId,
+        commentId,
+        text: text || "",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((data && data.message) || data.error || "Could not " + action + " comment");
+    }
+    return data;
+  }
+
+  async function mutateComment(action, threadId, commentId, text) {
+    const note = findComment(threadId, commentId);
+    if (note && !canManageComment(note)) {
+      throw new Error("Only the author or the system administrator can edit or delete this comment.");
+    }
+    const author = !note || isSelfAuthor(note);
+    if (author && currentRoom) {
+      try {
+        if (action === "edit") {
+          if (typeof currentRoom.editComment !== "function") throw new Error("editComment is not available");
+          return await currentRoom.editComment({ threadId, commentId, body: commentBody(text) });
+        }
+        if (typeof currentRoom.deleteComment !== "function") throw new Error("deleteComment is not available");
+        return await currentRoom.deleteComment({ threadId, commentId });
+      } catch (err) {
+        if (!isSystemAdmin()) throw err;
+      }
+    }
+    if (!isSystemAdmin() && note && !isSelfAuthor(note)) {
+      throw new Error("Only the author or the system administrator can edit or delete this comment.");
+    }
+    return await serverComment(action, threadId, commentId, text);
+  }
+
+  async function saveCommentEdit(article) {
+    if (!article || commentBusy) return;
+    const threadId = article.getAttribute("data-thread-id");
+    const commentId = article.getAttribute("data-comment-id");
+    const ta = article.querySelector(".comment-edit-text");
+    const text = ta ? ta.value.trim() : "";
+    if (!text || !threadId || !commentId) return;
+    commentBusy = true;
+    const save = article.querySelector(".comment-edit-save");
+    if (save) save.disabled = true;
+    try {
+      const body = commentBody(text);
+      await mutateComment("edit", threadId, commentId, text);
+      mergeLocalEdit(threadId, commentId, body);
+      cancelCommentEdit(article);
+      await paintComments();
+      await refreshThreads();
+    } catch (err) {
+      console.warn("Could not edit comment:", err);
+    } finally {
+      commentBusy = false;
+      if (save) save.disabled = false;
+    }
+  }
+
+  async function deleteManagedComment(threadId, commentId) {
+    if (!threadId || !commentId || commentBusy) return;
+    commentBusy = true;
+    try {
+      await mutateComment("delete", threadId, commentId);
+      mergeLocalDelete(threadId, commentId);
+      closeCommentMenu();
+      await paintComments();
+      await refreshThreads();
+    } catch (err) {
+      console.warn("Could not delete comment:", err);
+    } finally {
+      commentBusy = false;
+    }
+  }
+
+  function runCommentMenu(btn) {
+    const menu = ensureCommentMenu();
+    const threadId = menu.dataset.threadId;
+    const commentId = menu.dataset.commentId;
+    const act = btn && btn.dataset.act;
+    closeCommentMenu();
+    if (act === "edit") {
+      startCommentEdit(threadId, commentId);
+      return;
+    }
+    if (act === "delete") {
+      deleteManagedComment(threadId, commentId);
+    }
+  }
+
   async function paintComments() {
     harvestPresenceNames();
     syncCommentsChrome();
@@ -810,11 +1229,13 @@
     const seq = ++paintSeq;
     if (commentsNeedLiveblocks()) {
       list.innerHTML = '<p class="comments-empty">Comments need Liveblocks.</p>';
+      bindThreadList(list);
       return;
     }
     const rows = sortedThreads();
     if (!rows.length) {
       list.innerHTML = '<p class="comments-empty">No comments on this board.</p>';
+      bindThreadList(list);
       return;
     }
 
@@ -833,11 +1254,13 @@
         const text = await bodyText(note.body);
         if (seq !== paintSeq) return;
         const who = commentAuthor(note, thread);
+        const when = commentTime(note.editedAt || note.createdAt) + (note.editedAt ? " · edited" : "");
+        const manage = canManageComment(note) ? ' data-can-manage="1"' : "";
         parts.push(
-          `<article class="comment-note">` +
+          `<article class="comment-note" data-thread-id="${commentAttr(thread.id)}" data-comment-id="${commentAttr(note.id)}"${manage}>` +
           `<span class="comment-note-face" aria-hidden="true">${sanitize(authorInitial(who))}</span>` +
           `<span class="comment-note-who">${sanitize(who)}</span>` +
-          `<span class="comment-note-when">${sanitize(commentTime(note.createdAt))}</span>` +
+          `<span class="comment-note-when">${sanitize(when)}</span>` +
           `<p class="comment-note-body">${sanitize(text)}</p>` +
           `</article>`
         );
@@ -860,9 +1283,11 @@
       const when = commentTime((last && last.createdAt) || row.updatedAt || row.createdAt);
       const extra = notes.length > 1 ? notes.length + " comments" : "Comment";
       const resolved = row.resolved ? " is-resolved" : "";
+      const manage = canManageComment(first) ? ' data-can-manage="1"' : "";
+      const firstId = first && first.id ? commentAttr(first.id) : "";
       parts.push(
-        `<article class="comment-row${resolved}" data-thread-id="${sanitize(row.id)}">` +
-        `<button type="button" class="comment-row-hit" data-open-thread="${sanitize(row.id)}">` +
+        `<article class="comment-row${resolved}" data-thread-id="${commentAttr(row.id)}" data-comment-id="${firstId}"${manage}>` +
+        `<button type="button" class="comment-row-hit" data-open-thread="${commentAttr(row.id)}">` +
         `<span class="comment-row-preview">${sanitize(preview || "Comment")}</span>` +
         `<span class="comment-row-meta">${sanitize(author)}${author && when ? " · " : ""}${sanitize(when)} · ${sanitize(extra)}</span>` +
         `</button></article>`
@@ -877,10 +1302,51 @@
     if (!list || list.dataset.bound) return;
     list.dataset.bound = "1";
     list.addEventListener("click", (ev) => {
+      if (commentSuppressClick || (commentHold && commentHold.opened)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        commentSuppressClick = false;
+        return;
+      }
+      const save = ev.target.closest(".comment-edit-save");
+      if (save && list.contains(save)) {
+        ev.preventDefault();
+        saveCommentEdit(save.closest(".comment-note"));
+        return;
+      }
+      const cancel = ev.target.closest(".comment-edit-cancel");
+      if (cancel && list.contains(cancel)) {
+        ev.preventDefault();
+        cancelCommentEdit(cancel.closest(".comment-note"));
+        return;
+      }
+      if (ev.target.closest(".comment-note.is-edit")) return;
       const hit = ev.target.closest("[data-open-thread]");
       if (!hit || !list.contains(hit)) return;
       openThread(hit.getAttribute("data-open-thread"));
     });
+    list.addEventListener("keydown", (ev) => {
+      const ta = ev.target.closest(".comment-edit-text");
+      if (!ta || !list.contains(ta)) return;
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        cancelCommentEdit(ta.closest(".comment-note"));
+        return;
+      }
+      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+        ev.preventDefault();
+        saveCommentEdit(ta.closest(".comment-note"));
+      }
+    });
+    list.addEventListener("contextmenu", onCommentContext);
+    list.addEventListener("pointerdown", onCommentHoldDown);
+    list.addEventListener("pointermove", onCommentHoldMove);
+    list.addEventListener("pointerup", onCommentHoldUp);
+    list.addEventListener("pointercancel", clearCommentHold);
+    list.addEventListener("scroll", () => {
+      clearCommentHold();
+      closeCommentMenu();
+    }, { passive: true });
   }
 
   function paintPins() {
@@ -980,6 +1446,19 @@
       }
     }
     persistCommentsOpen(readCommentsOpen());
+    document.addEventListener("pointerdown", (ev) => {
+      if (!commentMenu || commentMenu.hidden) return;
+      if (commentMenu.contains(ev.target)) return;
+      closeCommentMenu();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && commentMenu && !commentMenu.hidden) {
+        ev.preventDefault();
+        closeCommentMenu();
+      }
+    });
+    window.addEventListener("resize", closeCommentMenu);
+    window.addEventListener("blur", closeCommentMenu);
     paintComments();
   }
 
@@ -1119,6 +1598,7 @@
     showComments,
     hideComments,
     openThread,
+    canManageComment,
     get commentsOpen() { return commentsOpen; },
     get activeRoom() { return currentRoom; },
     get currentBoardId() { return currentBoardId; },

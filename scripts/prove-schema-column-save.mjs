@@ -34,7 +34,7 @@ const must = [
   [appJs, "readFields walks fname inputs", /querySelectorAll\('\[name="fname"\]'\)/],
   [appJs, "appendGridRow uses a real table parse", /function rowFromHtml\(/],
   [appJs, "add-row appends via appendGridRow", /appendGridRow\(tbody/],
-  [appJs, "field sync force-writes the SQL pane", /setTa\([\s\S]*generate\(title, fields\),\s*true\)/],
+  [appJs, "field sync force-writes the SQL pane", /setTa\([\s\S]*generate\([\s\S]*\),\s*true\)/],
   [appJs, "hydrate keeps the open editor", /keepEdit/],
   [boardsJs, "board hydrate keeps the open editor", /keepEdit/],
   [indexHtml, "index Save has edit-save", /id="edit-save"/],

@@ -10,8 +10,24 @@
     },
     typescript: {
       keyword: "export const type import from interface return",
-      type: "string number boolean Date unknown",
-      fn: "pgTable mysqlTable sqliteTable uuid text varchar serial integer boolean timestamp jsonb notNull unique primaryKey defaultRandom defaultNow",
+      type: "string number boolean Date unknown Generated",
+      fn: "pgTable mysqlTable sqliteTable uuid text varchar serial integer boolean timestamp jsonb notNull unique primaryKey defaultRandom defaultNow z object optional nullable email router publicProcedure mutation query defineTable defineSchema Hono app",
+    },
+    protobuf: {
+      keyword: "syntax package message enum import option repeated optional required reserved",
+      type: "string int32 int64 uint32 uint64 bool bytes float double",
+    },
+    yaml: {
+      keyword: "paths get post put patch delete parameters responses content schema summary description",
+      type: "string integer boolean number array object",
+    },
+    http: {
+      keyword: "GET POST PUT PATCH DELETE HTTP Status",
+      type: "200 201 204 400 404 500",
+    },
+    markdown: {
+      keyword: "",
+      type: "",
     },
     graphql: {
       keyword: "type interface enum input extend schema query mutation scalar",

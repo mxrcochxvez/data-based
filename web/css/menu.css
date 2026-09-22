@@ -350,6 +350,61 @@ body.is-comments .hint { visibility: hidden; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+.comment-note.is-edit {
+  isolation: isolate;
+  grid-template-columns: 24px 1fr auto;
+  grid-template-areas:
+    "face who when"
+    "edit edit edit";
+  row-gap: 8px;
+  padding-bottom: 8px;
+}
+.comment-note.is-edit .comment-note-body[hidden] {
+  display: none !important;
+}
+#comment-menu {
+  z-index: 100;
+}
+.comment-edit {
+  grid-area: edit;
+  grid-column: 1 / -1;
+  display: block;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-alt, #f7f7f4);
+}
+.comment-edit-text {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.comment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+}
+.comment-edit-cancel,
+.comment-edit-save {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--island);
+  color: var(--ink);
+  font: 600 12px/1 var(--sans);
+  cursor: pointer;
+}
+.comment-edit-cancel {
+  border-color: transparent;
+  background: transparent;
+  color: var(--mute);
+}
+.comment-edit-cancel:hover { background: var(--field); color: var(--ink); }
+.comment-edit-save:hover { background: var(--field); }
 .comment-reply {
   display: flex;
   flex-direction: column;
@@ -361,7 +416,8 @@ body.is-comments .hint { visibility: hidden; }
 }
 .comment-reply[hidden] { display: none !important; }
 .comment-reply-text,
-.comment-composer-text {
+.comment-composer-text,
+.comment-edit-text {
   width: 100%;
   margin: 0;
   padding: 8px 10px;
@@ -402,9 +458,14 @@ body.is-comments .hint { visibility: hidden; }
 .comments-panel,
 .comment-composer,
 .comment-reply-text,
-.comment-composer-text {
+.comment-composer-text,
+.comment-edit-text {
   -webkit-user-select: text;
   user-select: text;
+}
+.comment-note,
+.comment-row {
+  -webkit-touch-callout: none;
 }
 
 .comments-pins {
@@ -457,6 +518,21 @@ body.is-comments .hint { visibility: hidden; }
   }
   .comment-reply {
     padding: 10px;
+  }
+  .comment-note,
+  .comment-row {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .comment-note.is-edit,
+  .comment-edit-text {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .comment-edit-cancel,
+  .comment-edit-save {
+    min-height: 44px;
+    padding: 8px 12px;
   }
 }
 
