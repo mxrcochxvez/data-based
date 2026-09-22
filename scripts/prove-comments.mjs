@@ -34,6 +34,13 @@ const fillMulti = sliceFn(menuJs, "fillMulti");
 const runItem = sliceFn(menuJs, "runItem");
 const paintThreadList = sliceFn(clientJs, "paintThreadList");
 const sendReply = sliceFn(clientJs, "sendReply");
+const canManage = sliceFn(clientJs, "canManageComment");
+const openMenu = sliceFn(clientJs, "openCommentMenu");
+const onHold = sliceFn(clientJs, "onCommentHoldDown");
+const mutate = sliceFn(clientJs, "mutateComment");
+const syncServer = fs.readFileSync(path.join(root, "web/sync-server.mjs"), "utf8");
+const apiComment = fs.readFileSync(path.join(root, "api/liveblocks-comment.mjs"), "utf8");
+const vercel = fs.readFileSync(path.join(root, "vercel.json"), "utf8");
 
 const must = [
   [fillCanvas, "Add comment in fillCanvas", /Add comment/],
@@ -58,6 +65,7 @@ const must = [
   [clientJs, "getThreads in liveblocks.js", /getThreads/],
   [clientJs, "localStorage databased-comments-open", /databased-comments-open/],
   [selectJs, "select.js ignores comments-panel", /comments-panel/],
+  [selectJs, "select.js ignores comment-menu", /comment-menu/],
   [clientJs, "body.is-comments while sidebar is open", /classList\.toggle\("is-comments"/],
   [appCss, "gated view hides comments-panel", /is-gated \.comments-panel/],
   [clientJs, "badge lives top-right", /badgeLocation:\s*"top-right"/],
@@ -74,6 +82,24 @@ const must = [
   [menuCss, "phone comments sit above the tools", /bottom:\s*calc\(66px \+ env\(safe-area-inset-bottom\)\)/],
   [paintThreadList, "list paint does not rebuild the reply form", /comment-reply/],
   [sendReply, "sendReply calls createComment", /createComment/],
+  [clientJs, "editComment in liveblocks.js", /editComment/],
+  [clientJs, "deleteComment in liveblocks.js", /deleteComment/],
+  [clientJs, "right-click opens comment menu", /function onCommentContext/],
+  [clientJs, "hold click opens comment menu", /function onCommentHoldDown/],
+  [clientJs, "comment menu includes Edit", /act: "edit"/],
+  [clientJs, "comment menu includes Delete", /act: "delete"/],
+  [canManage, "authors can manage their comment", /isSelfAuthor/],
+  [canManage, "system administrator can manage any comment", /isSystemAdmin/],
+  [openMenu, "menu requires data-can-manage", /data-can-manage/],
+  [onHold, "mobile hold uses touch or pen", /pointerType !== "touch"/],
+  [mutate, "author uses room.editComment", /editComment/],
+  [mutate, "admin can fall back to server", /serverComment/],
+  [paintThreadList, "thread comments mark can-manage", /data-can-manage/],
+  [menuCss, "coarse pointer skips selecting comment text", /pointer:\s*coarse[\s\S]*\.comment-note/],
+  [syncServer, "sync-server routes /api/liveblocks-comment", /url === "\/api\/liveblocks-comment"/],
+  [syncServer, "server allows author or system handle", /isSystemHandle\(handle\)/],
+  [apiComment, "api/liveblocks-comment imports handleLiveblocksComment", /handleLiveblocksComment/],
+  [vercel, "vercel.json defines api/liveblocks-comment.mjs function", /"api\/liveblocks-comment\.mjs"/],
 ];
 
 let failed = 0;
