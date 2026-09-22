@@ -352,18 +352,28 @@ body.is-comments .hint { visibility: hidden; }
 }
 .comment-note.is-edit {
   isolation: isolate;
+  grid-template-columns: 24px 1fr auto;
   grid-template-areas:
     "face who when"
-    "face edit edit";
+    "edit edit edit";
+  row-gap: 8px;
+  padding-bottom: 8px;
+}
+.comment-note.is-edit .comment-note-body[hidden] {
+  display: none !important;
 }
 #comment-menu {
   z-index: 100;
 }
 .comment-edit {
   grid-area: edit;
+  grid-column: 1 / -1;
   display: block;
   min-width: 0;
-  margin-top: 4px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-alt, #f7f7f4);
 }
 .comment-edit-text {
   display: block;
@@ -374,7 +384,8 @@ body.is-comments .hint { visibility: hidden; }
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 6px;
+  width: 100%;
+  margin-top: 8px;
 }
 .comment-edit-cancel,
 .comment-edit-save {
