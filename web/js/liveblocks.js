@@ -1034,10 +1034,8 @@
     note.classList.remove("is-edit");
     const body = note.querySelector(".comment-note-body");
     if (body) body.hidden = false;
-    const ta = note.querySelector(".comment-edit-text");
-    const actions = note.querySelector(".comment-edit-actions");
-    if (ta) ta.remove();
-    if (actions) actions.remove();
+    const edit = note.querySelector(".comment-edit");
+    if (edit) edit.remove();
   }
 
   function beginCommentEdit(article) {
@@ -1054,15 +1052,12 @@
     if (!body) return;
     article.classList.add("is-edit");
     body.hidden = true;
-    const ta = document.createElement("textarea");
-    ta.className = "comment-edit-text";
-    ta.rows = 3;
+    const edit = document.createElement("div");
+    edit.className = "comment-edit";
+    edit.innerHTML = '<textarea class="comment-edit-text" rows="3" aria-label="Edit comment"></textarea><div class="comment-edit-actions"><button type="button" class="comment-edit-cancel">Cancel</button><button type="button" class="comment-edit-save">Save</button></div>';
+    const ta = edit.querySelector(".comment-edit-text");
     ta.value = body.textContent || "";
-    ta.setAttribute("aria-label", "Edit comment");
-    const actions = document.createElement("div");
-    actions.className = "comment-edit-actions";
-    actions.innerHTML = '<button type="button" class="comment-edit-cancel">Cancel</button><button type="button" class="comment-edit-save btn">Save</button>';
-    body.after(ta, actions);
+    body.after(edit);
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);
   }
