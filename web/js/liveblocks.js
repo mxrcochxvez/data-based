@@ -912,13 +912,28 @@
     const ox = window.visualViewport ? window.visualViewport.offsetLeft : 0;
     const oy = window.visualViewport ? window.visualViewport.offsetTop : 0;
     const w = menu.offsetWidth || 196;
-    const h = menu.offsetHeight || 40;
+    const h = menu.offsetHeight || 72;
+    let left = ox;
+    let top = oy;
+    let right = ox + viewW;
+    let bottom = oy + viewH;
+    const sheet = commentsPanel();
+    if (sheet && !sheet.hidden) {
+      const box = sheet.getBoundingClientRect();
+      if (box.width && box.height) {
+        left = Math.max(left, box.left);
+        top = Math.max(top, box.top);
+        right = Math.min(right, box.right);
+        bottom = Math.min(bottom, box.bottom);
+      }
+    }
     let x = clientX;
     let y = clientY;
-    if (x + w > ox + viewW - pad) x = ox + viewW - w - pad;
-    if (y + h > oy + viewH - pad) y = oy + viewH - h - pad;
-    if (x < ox + pad) x = ox + pad;
-    if (y < oy + pad) y = oy + pad;
+    if (y + h > bottom - pad) y = clientY - h;
+    if (x + w > right - pad) x = right - w - pad;
+    if (y + h > bottom - pad) y = bottom - h - pad;
+    if (x < left + pad) x = left + pad;
+    if (y < top + pad) y = top + pad;
     menu.style.left = Math.round(x) + "px";
     menu.style.top = Math.round(y) + "px";
   }
