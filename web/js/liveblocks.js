@@ -1079,12 +1079,16 @@
 
   async function startCommentEdit(threadId, commentId) {
     if (!threadId || !commentId) return;
-    if (openThreadId !== threadId) {
+    const list = commentsList();
+    let note = list && list.querySelector('.comment-note[data-comment-id="' + commentAttr(commentId) + '"]');
+    if (!note) {
       openThreadId = threadId;
       await paintComments();
+      note = commentsList() && commentsList().querySelector('.comment-note[data-comment-id="' + commentAttr(commentId) + '"]');
+    } else if (openThreadId !== threadId) {
+      openThreadId = threadId;
+      syncCommentsChrome();
     }
-    const list = commentsList();
-    const note = list && list.querySelector('.comment-note[data-comment-id="' + commentAttr(commentId) + '"]');
     if (note) beginCommentEdit(note);
   }
 
