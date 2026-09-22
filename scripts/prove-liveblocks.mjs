@@ -9,6 +9,7 @@ const homeHtml = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
 const vercel = fs.readFileSync(path.join(root, "vercel.json"), "utf8");
 const syncServer = fs.readFileSync(path.join(root, "web/sync-server.mjs"), "utf8");
 const apiAuth = fs.readFileSync(path.join(root, "api/liveblocks-auth.mjs"), "utf8");
+const apiComment = fs.readFileSync(path.join(root, "api/liveblocks-comment.mjs"), "utf8");
 const clientJs = fs.readFileSync(path.join(root, "web/js/liveblocks.js"), "utf8");
 const selectJs = fs.readFileSync(path.join(root, "web/js/select.js"), "utf8");
 const boardsJs = fs.readFileSync(path.join(root, "web/js/boards.js"), "utf8");
@@ -86,6 +87,11 @@ const must = [
   [selectJs, "select.js ignores comments-panel", /comments-panel/],
   [clientJs, "badge lives top-right", /badgeLocation:\s*"top-right"/],
   [clientJs, "sendReply posts createComment", /async function sendReply/],
+  [clientJs, "editComment in liveblocks.js", /editComment/],
+  [clientJs, "deleteComment in liveblocks.js", /deleteComment/],
+  [vercel, "vercel.json defines api/liveblocks-comment.mjs function", /"api\/liveblocks-comment\.mjs"/],
+  [syncServer, "sync-server routes /api/liveblocks-comment", /url === "\/api\/liveblocks-comment"/],
+  [apiComment, "api/liveblocks-comment imports handleLiveblocksComment", /handleLiveblocksComment/],
 ];
 
 let failed = 0;
