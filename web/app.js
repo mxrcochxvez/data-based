@@ -245,6 +245,8 @@ function normalizeCard(c) {
 function hydrateBoard(b) {
   if (window.DataBasedSelect && typeof window.DataBasedSelect.isDragging === "function" && window.DataBasedSelect.isDragging()) return;
   if (state.dragged || state.drag) return;
+  const keepEdit = editDlg && editDlg.open ? state.editing : null;
+  const keepSel = editDlg && editDlg.open ? new Set(state.sel) : new Set();
   store.currentId = b.id;
   state.cards = (b.cards || []).map(normalizeCard);
   state.nextId = b.nextId || 1;
@@ -252,8 +254,9 @@ function hydrateBoard(b) {
   state.camera = (window.Camera && window.Camera.normalize)
     ? window.Camera.normalize(b.camera)
     : { pan: { x: (b.camera && b.camera.pan && b.camera.pan.x) || 0, y: (b.camera && b.camera.pan && b.camera.pan.y) || 0 }, zoom: (b.camera && b.camera.zoom) || 1 };
-  state.sel = new Set();
-  state.editing = null;
+  state.sel = keepSel;
+  if ("sels" in state) state.sels = keepSel;
+  state.editing = keepEdit;
   if (window.Camera && typeof window.Camera.hydrate === "function") window.Camera.hydrate(b);
   if (flow() && typeof flow().hydrateFromBoard === "function") flow().hydrateFromBoard(b);
   else state.edges = Array.isArray(b.edges) ? b.edges.slice() : [];
@@ -775,7 +778,7 @@ function comboCell(name, value, list) {
 
 function gridRow(f) {
   return `
-    <tr>
+    <tr class="grid-row">
       <td><input type="text" name="fname" value="${esc(f.name || "")}" placeholder="name"></td>
       <td>${comboCell("ftype", f.type, "types")}</td>
       <td>${comboCell("fdef", f.def, "defaults")}</td>
@@ -832,8 +835,8 @@ function bindCodeScroll(root) {
   });
 }
 
-function setTa(ta, value) {
-  if (!ta || document.activeElement === ta) return;
+function setTa(ta, value, force) {
+  if (!ta || (!force && document.activeElement === ta)) return;
   ta.value = value;
   paintCode(ta);
 }
@@ -1101,24 +1104,48 @@ function removeSel() {
   persist();
 }
 
+function fieldRowRoot(el) {
+  return el.closest("tr") || el.closest(".grid-row") || el.parentElement;
+}
+
+function readFieldRow(row, nameEl) {
+  return {
+    name: (nameEl || (row && row.querySelector('[name="fname"]')) || {}).value || "col",
+    type: (row && row.querySelector('[name="ftype"]') || {}).value || "text",
+    def: (row && row.querySelector('[name="fdef"]') || {}).value || "",
+    fns: (row && row.querySelector('[name="ffns"]') || {}).value || "",
+  };
+}
+
 function readFields(box) {
-  const rows = [...box.querySelectorAll("tbody tr")];
-  if (rows.length) {
-    return rows.map((row) => ({
-      name: (row.querySelector('[name="fname"]') || {}).value || "col",
-      type: (row.querySelector('[name="ftype"]') || {}).value || "text",
-      def: (row.querySelector('[name="fdef"]') || {}).value || "",
-      fns: (row.querySelector('[name="ffns"]') || {}).value || "",
-    }));
+  return [...box.querySelectorAll('[name="fname"]')].map((n) => readFieldRow(fieldRowRoot(n), n));
+}
+
+function rowFromHtml(html) {
+  const box = document.createElement("table");
+  box.innerHTML = "<tbody>" + html + "</tbody>";
+  return box.querySelector("tr");
+}
+
+function appendGridRow(tbody, field) {
+  const row = rowFromHtml(gridRow(field));
+  if (row && tbody) tbody.appendChild(row);
+  return row;
+}
+
+function commitSchemaBody(lang, title, fields, source, side) {
+  const fromGrid = lang.generate(title, fields);
+  if (side !== "source") {
+    return { title, fields, source: fromGrid };
   }
-  const names = [...box.querySelectorAll('[name="fname"]')];
-  const types = [...box.querySelectorAll('[name="ftype"]')];
-  return names.map((n, i) => ({
-    name: n.value || "col",
-    type: types[i] ? types[i].value || "text" : "text",
-    def: "",
-    fns: "",
-  }));
+  const parsed = lang.parse(source);
+  if (!parsed.ok) {
+    return { title, fields, source: fromGrid };
+  }
+  if (fields.length > parsed.fields.length) {
+    return { title, fields, source: fromGrid };
+  }
+  return { title: parsed.title || title, fields: parsed.fields, source };
 }
 
 function fxTools() {
@@ -1319,6 +1346,7 @@ function openEdit(card) {
     `;
   }
   document.body.classList.add("is-modal");
+  schemaSide = "fields";
   editDlg.showModal();
   bindCodeScroll(editBody);
 }
@@ -1330,13 +1358,15 @@ function editingCard() {
 function syncSchemaFromFields() {
   const card = editingCard();
   if (!card || !isSchema(card.kind)) return;
+  schemaSide = "fields";
   const title = editBody.querySelector('[name="title"]').value || card.body.title;
   const fields = readFields(editBody);
-  setTa(editBody.querySelector('[name="source"]'), LANG[card.kind].generate(title, fields));
+  setTa(editBody.querySelector('[name="source"]'), LANG[card.kind].generate(title, fields), true);
   setErr("");
 }
 
 function syncSchemaFromSource() {
+  schemaSide = "source";
   const card = editingCard();
   if (!card || !isSchema(card.kind)) return;
   const ta = editBody.querySelector('[name="source"]');
@@ -1405,13 +1435,16 @@ function saveEdit() {
   const titleEl = editBody.querySelector('[name="title"]');
   if (titleEl) card.body.title = titleEl.value || card.body.title;
   if (isSchema(card.kind)) {
-    card.body.fields = readFields(editBody);
-    card.body.source = editBody.querySelector('[name="source"]').value;
-    const parsed = LANG[card.kind].parse(card.body.source);
-    if (parsed.ok) {
-      card.body.fields = parsed.fields;
-      if (parsed.title) card.body.title = parsed.title;
-    }
+    const committed = commitSchemaBody(
+      LANG[card.kind],
+      card.body.title,
+      readFields(editBody),
+      (editBody.querySelector('[name="source"]') || {}).value || "",
+      schemaSide
+    );
+    card.body.title = committed.title;
+    card.body.fields = committed.fields;
+    card.body.source = committed.source;
   } else if (card.kind === "logic") {
     const inputBox = editBody.querySelector('[data-slot="input"]');
     const outputBox = editBody.querySelector('[data-slot="output"]');
@@ -1446,6 +1479,7 @@ function cardFromEvent(t) {
 
 const comboPop = $("combo-pop");
 let comboOpen = null;
+let schemaSide = "fields";
 
 function comboOpts(input) {
   const vendor = input.closest("[data-vendor]")?.dataset.vendor || "schema";
@@ -1602,6 +1636,8 @@ window.DB = {
   persistDoc,
   flushBoard,
   hydrateBoard,
+  commitSchemaBody,
+  readFields,
   currentBoard,
   setSelection,
   renderCards,
@@ -1696,15 +1732,26 @@ marketBody.addEventListener("click", (ev) => {
   place(offer.dataset.kind);
 });
 
+function commitEdit() {
+  saveEdit();
+  if (editDlg.open) editDlg.close();
+}
+
 $("edit-cancel").addEventListener("click", () => {
   state.editing = null;
   editDlg.close();
 });
 $("edit-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  saveEdit();
-  editDlg.close();
+  commitEdit();
 });
+const editSave = $("edit-save");
+if (editSave) {
+  editSave.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    commitEdit();
+  });
+}
 
 editBody.addEventListener("click", (ev) => {
   if (ev.target.classList.contains("combo-chev")) {
@@ -1714,12 +1761,16 @@ editBody.addEventListener("click", (ev) => {
     return;
   }
   if (ev.target.dataset.addRow != null || ev.target.classList.contains("add-row") || ev.target.id === "add-field") {
-    const grid = ev.target.closest("div")?.querySelector?.("tbody") || editBody.querySelector("tbody");
     const vendor = ev.target.closest("[data-vendor]") || ev.target.previousElementSibling;
     const pack = VENDORS[(vendor && vendor.dataset.vendor) || "schema"];
-    const tbody = ev.target.closest(".split")?.querySelector("tbody") || editBody.querySelector("tbody");
+    const grid = (vendor && vendor.classList && vendor.classList.contains("grid") && vendor)
+      || ev.target.previousElementSibling
+      || ev.target.closest(".split")
+      || ev.target.closest(".block")
+      || editBody;
+    const tbody = (grid && grid.querySelector && grid.querySelector("tbody")) || editBody.querySelector("tbody");
     const y = editBody.scrollTop;
-    tbody.insertAdjacentHTML("beforeend", gridRow({ name: "", type: pack.types[0], def: "", fns: "" }));
+    appendGridRow(tbody, { name: "", type: pack.types[0], def: "", fns: "" });
     editBody.scrollTop = y;
     if (editingCard() && isSchema(editingCard().kind)) syncSchemaFromFields();
     else {
@@ -1729,7 +1780,7 @@ editBody.addEventListener("click", (ev) => {
   }
   if (ev.target.classList.contains("add-type")) {
     const tbody = ev.target.closest("div").querySelector("tbody");
-    tbody.insertAdjacentHTML("beforeend", gridRow({ name: "", type: "string", def: "", fns: "" }));
+    appendGridRow(tbody, { name: "", type: "string", def: "", fns: "" });
     const slot = ev.target.closest(".block").dataset.slot;
     syncTypeSlot(slot, slot === "input" ? "Input" : "Output");
   }
