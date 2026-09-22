@@ -384,8 +384,22 @@ textarea.note-text {
   padding: 18px 20px 0;
 }
 .market-head h2 { font-size: 16px; letter-spacing: -0.02em; }
-.market-lead { color: var(--mute); padding: 6px 20px 14px; }
+.market-lead { color: var(--mute); padding: 6px 20px 10px; }
+.market-search {
+  display: block;
+  width: calc(100% - 40px);
+  margin: 0 20px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.market-search:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
 .market-body { overflow: auto; padding: 0 12px 24px; }
+.market-grid li[hidden] { display: none; }
 .market-grid {
   list-style: none;
   margin: 0;
