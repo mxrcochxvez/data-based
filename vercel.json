@@ -34,6 +34,10 @@
     "api/liveblocks-auth.mjs": {
       "maxDuration": 15,
       "includeFiles": "web/**"
+    },
+    "api/liveblocks-comment.mjs": {
+      "maxDuration": 15,
+      "includeFiles": "web/**"
     }
   }
 }

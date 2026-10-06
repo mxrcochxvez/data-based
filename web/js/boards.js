@@ -114,9 +114,12 @@
     api.state.placeAt = b.placeAt || { x: 88, y: 200 };
     if (global.Camera && typeof global.Camera.hydrate === "function") global.Camera.hydrate(b);
     else api.state.camera = b.camera || { pan: { x: 0, y: 0 }, zoom: 1 };
-    api.state.sel = new Set();
-    if ("sels" in api.state) api.state.sels = api.state.sel;
-    api.state.editing = null;
+    const editOpen = global.DB && global.DB.editDlg && global.DB.editDlg.open;
+    const keepEdit = editOpen ? api.state.editing : null;
+    const keepSel = editOpen ? new Set(api.state.sel) : new Set();
+    api.state.sel = keepSel;
+    if ("sels" in api.state) api.state.sels = keepSel;
+    api.state.editing = keepEdit;
     const flow = global.DataBasedFlow;
     if (flow && typeof flow.hydrateFromBoard === "function") flow.hydrateFromBoard(b);
     if (global.DataBasedLiveblocks && typeof global.DataBasedLiveblocks.enterBoard === "function") {

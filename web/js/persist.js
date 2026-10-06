@@ -78,6 +78,9 @@
   }
 
   function defaultSize(kind) {
+    if (global.DataBasedKinds && typeof global.DataBasedKinds.size === "function") {
+      return global.DataBasedKinds.size(kind);
+    }
     if (kind === "note") return { w: 200, h: 160 };
     if (kind === "logic") return { w: 280, h: 164 };
     if (kind === "mind") return { w: 228, h: 140 };

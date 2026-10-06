@@ -181,21 +181,13 @@ export async function handleLiveblocksAuth(req, res) {
       return;
     }
 
-    const boardId = room.startsWith("board:") ? room.slice(6) : room;
-    if (boardId) {
-      const store = await readStoreFile(DATA_DIR);
-      const board = Array.isArray(store.boards) ? store.boards.find((b) => b.id === boardId) : null;
-      if (board && !isSystemHandle(handle)) {
-        const isOwner = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle && g.role === "owner");
-        const hasGrant = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle);
-        if (!isOwner && !hasGrant && aclEnforced()) {
-          send(res, 403, { error: "board_access_denied", message: "You do not have access to this board." });
-          return;
-        }
-      }
+    const denied = await denyBoardRoom(handle, room);
+    if (denied) {
+      send(res, 403, denied);
+      return;
     }
 
-    const secretKey = (process.env.LIVEBLOCKS_SECRET_KEY || "").trim();
+    const secretKey = liveblocksSecret();
     if (!secretKey) {
       send(res, 503, {
         error: "liveblocks_unconfigured",
@@ -232,6 +224,147 @@ export async function handleLiveblocksAuth(req, res) {
   } catch (e) {
     const status = e instanceof StoreConfigError ? e.status : 500;
     send(res, status, { error: e && e.message ? e.message : "liveblocks auth failed" });
+  }
+}
+
+function liveblocksSecret() {
+  return (process.env.LIVEBLOCKS_SECRET_KEY || "").trim();
+}
+
+function commentBodyFromText(text) {
+  return {
+    version: 1,
+    content: [{ type: "paragraph", children: [{ text: String(text || "") }] }],
+  };
+}
+
+function sameCommentUser(a, b) {
+  const left = String(a || "").trim();
+  const right = String(b || "").trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+async function denyBoardRoom(handle, room) {
+  const boardId = String(room || "").startsWith("board:") ? String(room).slice(6) : String(room || "");
+  if (!boardId) return null;
+  const store = await readStoreFile(DATA_DIR);
+  const board = Array.isArray(store.boards) ? store.boards.find((b) => b.id === boardId) : null;
+  if (!board || isSystemHandle(handle)) return null;
+  const isOwner = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle && g.role === "owner");
+  const hasGrant = Array.isArray(board.grants) && board.grants.some((g) => g.handle === handle);
+  if (!isOwner && !hasGrant && aclEnforced()) {
+    return { error: "board_access_denied", message: "You do not have access to this board." };
+  }
+  return null;
+}
+
+async function loadLiveblocksComment(liveblocks, roomId, threadId, commentId) {
+  if (typeof liveblocks.getComment === "function") {
+    return await liveblocks.getComment({ roomId, threadId, commentId });
+  }
+  if (typeof liveblocks.getThread === "function") {
+    const thread = await liveblocks.getThread({ roomId, threadId });
+    const notes = thread && Array.isArray(thread.comments) ? thread.comments : [];
+    return notes.find((c) => c && c.id === commentId) || null;
+  }
+  return null;
+}
+
+export async function handleLiveblocksComment(req, res) {
+  try {
+    if (req.method === "OPTIONS") {
+      send(res, 204, "");
+      return;
+    }
+    if (req.method !== "POST") {
+      send(res, 405, { error: "method not allowed" });
+      return;
+    }
+    const handle = await requireAppUser(req, res);
+    if (!handle) return;
+
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch (_) {
+      send(res, 400, { error: "invalid json" });
+      return;
+    }
+
+    const action = body && typeof body.action === "string" ? body.action.trim() : "";
+    const room = body && typeof body.room === "string" ? body.room.trim() : "";
+    const threadId = body && typeof body.threadId === "string" ? body.threadId.trim() : "";
+    const commentId = body && typeof body.commentId === "string" ? body.commentId.trim() : "";
+    const text = body && body.text != null ? String(body.text) : "";
+    if (action !== "edit" && action !== "delete") {
+      send(res, 400, { error: "action must be edit or delete" });
+      return;
+    }
+    if (!room || !threadId || !commentId) {
+      send(res, 400, { error: "room, threadId, and commentId are required" });
+      return;
+    }
+    if (action === "edit" && !text.trim()) {
+      send(res, 400, { error: "text is required" });
+      return;
+    }
+    if (text.length > 8000) {
+      send(res, 400, { error: "comment is too long" });
+      return;
+    }
+
+    const denied = await denyBoardRoom(handle, room);
+    if (denied) {
+      send(res, 403, denied);
+      return;
+    }
+
+    const secretKey = liveblocksSecret();
+    if (!secretKey) {
+      send(res, 503, {
+        error: "liveblocks_unconfigured",
+        message: "LIVEBLOCKS_SECRET_KEY is not configured.",
+      });
+      return;
+    }
+
+    const { Liveblocks } = await import("@liveblocks/node");
+    const liveblocks = new Liveblocks({ secret: secretKey });
+    const comment = await loadLiveblocksComment(liveblocks, room, threadId, commentId);
+    if (!comment || comment.deletedAt) {
+      send(res, 404, { error: "comment_not_found", message: "Comment not found." });
+      return;
+    }
+
+    const ident = await clerkIdentityFromRequest(req);
+    const selfIds = [ident.userId, ident.email, handle].filter(Boolean);
+    const isAuthor = selfIds.some((id) => sameCommentUser(id, comment.userId));
+    if (!isAuthor && !isSystemHandle(handle)) {
+      send(res, 403, {
+        error: "forbidden",
+        message: "Only the author or the system administrator can edit or delete this comment.",
+      });
+      return;
+    }
+
+    if (action === "edit") {
+      const edited = await liveblocks.editComment({
+        roomId: room,
+        threadId,
+        commentId,
+        data: { body: commentBodyFromText(text.trim()) },
+      });
+      send(res, 200, { ok: true, comment: edited || null });
+      return;
+    }
+
+    await liveblocks.deleteComment({ roomId: room, threadId, commentId });
+    send(res, 200, { ok: true, deleted: true });
+  } catch (e) {
+    const status = e instanceof StoreConfigError ? e.status : 500;
+    send(res, status, { error: e && e.message ? e.message : "liveblocks comment failed" });
   }
 }
 
@@ -304,6 +437,10 @@ const server = http.createServer((req, res) => {
   }
   if (url === "/api/liveblocks-auth") {
     handleLiveblocksAuth(req, res);
+    return;
+  }
+  if (url === "/api/liveblocks-comment") {
+    handleLiveblocksComment(req, res);
     return;
   }
   if (req.method !== "GET" && req.method !== "HEAD") {

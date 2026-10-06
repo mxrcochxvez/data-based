@@ -19,6 +19,14 @@ const KIND = {
   ctrl: "ctrl",
   note: "note",
   mind: "mind",
+  kysely: "kysely",
+  convex: "convex",
+  zod: "zod",
+  proto: "proto",
+  protobuf: "proto",
+  trpc: "trpc",
+  hono: "hono",
+  openapi: "openapi",
 };
 
 const COL_X = { schema: 88, drizzle: 88, prisma: 88, repo: 388, logic: 688, ctrl: 988, gql: 988, note: 88, mind: 88 };

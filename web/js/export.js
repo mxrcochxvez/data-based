@@ -24,17 +24,24 @@
   };
 
   const LAYER_RANK = { table: 0, dal: 1, logic: 2, controller: 3, api: 4, note: 5 };
-  const LANG = { schema: "sql", drizzle: "typescript", prisma: "prisma", gql: "graphql" };
+
+  function kinds() {
+    return global.DataBasedKinds || null;
+  }
 
   function $(id) {
     return document.getElementById(id);
   }
 
   function layerOf(kind) {
+    const k = kinds();
+    if (k && k.layer) return k.layer(kind);
     return LAYER[kind] || "note";
   }
 
   function labelOf(kind) {
+    const k = kinds();
+    if (k && k.label) return k.label(kind);
     return KIND_LABEL[kind] || kind || "card";
   }
 
@@ -216,18 +223,16 @@
     const body = card.body || {};
     const kind = card.kind;
     const layer = layerOf(kind);
+    const k = kinds();
+    const fam = k && k.family ? k.family(kind) : "";
+    const lang = k && k.lang ? k.lang(kind) : { id: "" };
     const lines = [];
     lines.push("### " + cardTitle(card));
     lines.push("");
     lines.push("- id: `" + card.id + "`");
     lines.push("- kind: `" + kind + "` (" + labelOf(kind) + ")");
     lines.push("- layer: `" + layer + "`");
-    if (kind === "note" || kind === "mind" || kind === "ctrl" || kind === "repo") {
-      lines.push("");
-      lines.push(String(body.note || "").trim() || "_No notes._");
-      return lines.join("\n");
-    }
-    if (kind === "schema" || kind === "drizzle" || kind === "prisma" || kind === "gql") {
+    if (fam === "table" || fam === "type" || kind === "schema" || kind === "drizzle" || kind === "prisma" || kind === "gql") {
       lines.push("");
       lines.push("**Fields**");
       lines.push("");
@@ -235,10 +240,51 @@
       lines.push("");
       lines.push("**Vendor source**");
       lines.push("");
-      lines.push(fence(LANG[kind] || "", body.source || ""));
+      lines.push(fence((lang && lang.id) || "", body.source || ""));
       return lines.join("\n");
     }
-    if (kind === "logic") {
+    if (fam === "route") {
+      lines.push("");
+      lines.push("**Routes**");
+      lines.push("");
+      const routes = Array.isArray(body.routes) ? body.routes : [];
+      if (!routes.length) lines.push("_No routes._");
+      else {
+        lines.push("| method | path | status | handler |");
+        lines.push("| --- | --- | --- | --- |");
+        for (const r of routes) {
+          lines.push("| " + [cell(r.method), cell(r.path), cell(r.status), cell(r.handler)].join(" | ") + " |");
+        }
+      }
+      lines.push("");
+      lines.push("**Vendor source**");
+      lines.push("");
+      lines.push(fence((lang && lang.id) || "", body.source || ""));
+      return lines.join("\n");
+    }
+    if (fam === "list") {
+      lines.push("");
+      lines.push("**Methods**");
+      lines.push("");
+      const entries = Array.isArray(body.entries) ? body.entries : [];
+      if (!entries.length) lines.push(String(body.note || "").trim() || "_No methods._");
+      else {
+        lines.push("| method | signature |");
+        lines.push("| --- | --- |");
+        for (const e of entries) lines.push("| " + [cell(e.name), cell(e.sig)].join(" | ") + " |");
+      }
+      lines.push("");
+      lines.push("**Vendor source**");
+      lines.push("");
+      lines.push(fence((lang && lang.id) || "typescript", body.source || ""));
+      return lines.join("\n");
+    }
+    if (kind === "note" || kind === "mind" || fam === "note") {
+      lines.push("");
+      lines.push(String(body.note || body.source || "").trim() || "_No notes._");
+      return lines.join("\n");
+    }
+    if (kind === "logic" || fam === "effect") {
       lines.push("");
       lines.push("**Input type**");
       lines.push("");
